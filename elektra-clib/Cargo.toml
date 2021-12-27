@@ -1,0 +1,17 @@
+[package]
+name = "elektra-rust-clib"
+version = "0.1.0"
+authors = ["Stefan Hanreich <stefanhani@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+libc = "0.2"
+bitflags = "1.2.1"
+elektra-rust = { version = "0.1.0", path = "../elektra"}
+
+[build-dependencies]
+bindgen = "0.53.1"
+
+[lib]
+name = "elektra_rust"
+crate-type = ["cdylib"]
