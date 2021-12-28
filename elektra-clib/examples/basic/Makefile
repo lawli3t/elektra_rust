@@ -1,7 +1,9 @@
 GCC_BIN ?= $(shell which gcc)
 CARGO_BIN ?= $(shell which cargo)
-ELEKTRA_INCLUDES = /home/hoan/Development/libelektra/elektra-install/include/elektra
-LIBRARY_PATH = /home/hoan/Development/elektra-rust/elektra-clib/target/release
+
+EXAMPLE_ROOT = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+ELEKTRA_INCLUDES = $(EXAMPLE_ROOT)/../../resources/include/elektra
+LIBRARY_PATH = $(EXAMPLE_ROOT)/../../target/release
 
 run: clean build
 	LD_LIBRARY_PATH=$(LIBRARY_PATH) ./basic
