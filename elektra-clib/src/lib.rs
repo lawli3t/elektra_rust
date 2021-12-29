@@ -9,9 +9,14 @@ use std::ptr;
 use libc::{ssize_t, size_t, c_char, c_int, c_void};
 
 mod structs;
-use crate::structs::{CKey, CKeySet, KeyNewFlags, elektraNamespace, elektraCopyFlags, elektraLockFlags, elektraLookupFlags, CKeyConvertable};
 
-use elektra_rust::key::Key;
+use crate::structs::{
+    CKey, CKeySet,
+    KeyNewFlags, elektraNamespace, elektraCopyFlags, elektraLockFlags, elektraLookupFlags,
+    CKeyEquivalent, CKeySetEquivalent
+};
+
+use elektra_rust::key::{Key, KeySet};
 
 /*
 #[no_mangle]
@@ -32,24 +37,47 @@ pub extern "C" fn kdbSet(
 ) -> ::std::os::raw::c_int;
 */
 
+fn cleanup_c_key(key: *mut CKey) {
+    unsafe {
+        CString::from_raw(
+            (*key).ukey
+        );
+
+        CString::from_raw(
+            (*key).data.c
+        );
+
+        CString::from_raw(
+            (*key).key
+        );
+
+        Box::from_raw(key)
+    };
+}
+
 #[no_mangle]
-pub unsafe extern "C" fn keyNew(keyname: *const c_char, mut args: ...) -> *mut CKey {
+pub unsafe extern "C" fn keyNew(keyname: *const c_char, args: ...) -> *const CKey {
     let mut va_list: VaListImpl;
     va_list = args.clone();
     keyVNew(keyname, va_list.as_va_list())
 }
 
 #[no_mangle]
-pub extern "C" fn keyVNew(keyname: *const c_char, mut ap: VaList) -> *mut CKey {
+pub extern "C" fn keyVNew(keyname: *const c_char, mut ap: VaList) -> *const CKey {
+    if keyname.is_null() {
+        return ptr::null_mut()
+    }
+
     let cstr = unsafe { CStr::from_ptr(keyname) };
-    let keyNameStr = cstr.to_str().expect("key name cannot be cast to string").to_string();
+    let keyNameStr = cstr.to_str()
+        .expect("key name cannot be cast to string")
+        .to_string();
 
-    let key: Key =  Key::new(keyNameStr);
-
-    println!("{}", key.name());
+    let key: Key = Key::new(keyNameStr);
 
     loop {
         let flag_argument = unsafe { ap.arg::<c_int>() };
+
         let flags = KeyNewFlags::from_bits(flag_argument)
             .expect("Cannot create Flags from va_list args");
 
@@ -63,7 +91,9 @@ pub extern "C" fn keyVNew(keyname: *const c_char, mut ap: VaList) -> *mut CKey {
         }
     }
 
-    &mut key.to_ckey()
+    Box::into_raw(
+        Box::new(key.to_ckey())
+    )
 }
 
 #[no_mangle]
@@ -79,37 +109,13 @@ pub extern "C" fn keyClear(key: *mut CKey) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn keyDel(key: *mut CKey) -> c_int {
-    1
-}
+    if key.is_null() {
+        return -1;
+    }
 
-#[no_mangle]
-pub extern "C" fn keyIncRef(key: *mut CKey) -> ssize_t {
-    1
-}
+    cleanup_c_key(key);
 
-#[no_mangle]
-pub extern "C" fn keyDecRef(key: *mut CKey) -> ssize_t {
-    1
-}
-
-#[no_mangle]
-pub extern "C" fn keyGetRef(key: *const CKey) -> ssize_t {
-    1
-}
-
-#[no_mangle]
-pub extern "C" fn keyRewindMeta(key: *mut CKey) -> c_int {
-    1
-}
-
-#[no_mangle]
-pub extern "C" fn keyNextMeta(key: *mut CKey) -> *const CKey {
-    &CKey::default()
-}
-
-#[no_mangle]
-pub extern "C" fn keyCurrentMeta(key: *const CKey) -> *const CKey {
-    &CKey::default()
+    return 0;
 }
 
 #[no_mangle]
@@ -182,7 +188,16 @@ pub extern "C" fn keyIsString(key: *const CKey) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn keyName(key: *const CKey) -> *const c_char {
-    CString::new("qq").expect("CString new failed").into_raw()
+    unsafe { (*key).key }
+
+    /*
+    let mut key = unsafe { Key::from_ckey(&*key) };
+
+    let name = CString::new(key.name().clone())
+        .unwrap();
+
+    name.into_raw() as *mut u8
+    */
 }
 
 #[no_mangle]
@@ -202,8 +217,36 @@ pub extern "C" fn keyGetName(
 
 #[no_mangle]
 pub extern "C" fn keySetName(key: *mut CKey, newname: *const c_char) -> ssize_t {
-    1
+    let mut rustKey = unsafe { Key::from_ckey(&*key) };
 
+    let cstr = unsafe { CStr::from_ptr(newname) };
+    let keyNameStr = cstr.to_str()
+        .unwrap()
+        .to_string();
+
+    rustKey.set_name(keyNameStr);
+
+    unsafe {
+        let ukeyPtr = (*key).ukey;
+        let dataPtr = (*key).data.c;
+        let keyPtr = (*key).key;
+
+        std::ptr::write(key, rustKey.to_ckey());
+
+        CString::from_raw(
+            ukeyPtr
+        );
+
+        CString::from_raw(
+            dataPtr
+        );
+
+        CString::from_raw(
+            keyPtr
+        );
+    };
+
+    cstr.to_bytes_with_nul().len() as ssize_t
 }
 
 #[no_mangle]
@@ -332,7 +375,8 @@ pub extern "C" fn keyIsLocked(key: *const CKey, what: elektraLockFlags) -> c_int
 
 #[no_mangle]
 pub extern "C" fn ksNew(alloc: size_t) -> *mut CKeySet {
-    &mut CKeySet::default()
+    let ks = KeySet::new();
+    &mut ks.to_ckeyset()
 }
 
 #[no_mangle]
@@ -365,7 +409,7 @@ pub extern "C" fn ksGetSize(ks: *const CKeySet) -> ssize_t {
 }
 
 #[no_mangle]
-pub extern "C" fn ksAppendCKey(ks: *mut CKeySet, toAppend: *mut CKey) -> ssize_t {
+pub extern "C" fn ksAppendKey(ks: *mut CKeySet, toAppend: *mut CKey) -> ssize_t {
     1
 
 }

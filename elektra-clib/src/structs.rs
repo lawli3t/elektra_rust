@@ -8,7 +8,7 @@ use libc::{size_t, c_char, c_int, c_uint};
 
 use bitflags::bitflags;
 
-use elektra_rust::key::Key;
+use elektra_rust::key::{Key, KeySet};
 
 bitflags! {
     pub struct KeyNewFlags: i32 {
@@ -27,8 +27,8 @@ pub type elektraNamespace = c_int;
 
 #[repr(C)]
 pub union CDataUnion {
-    pub c: *const c_char,
-    pub v: *const libc::c_void,
+    pub c: *mut c_char,
+    pub v: *mut libc::c_void,
 }
 
 #[repr(C)]
@@ -67,6 +67,8 @@ impl CKey {
 #[repr(C)]
 pub struct CKeySet
 {
+    pub array: *mut *const CKey,
+
     pub size: size_t,
     pub alloc: size_t,
 
@@ -74,33 +76,51 @@ pub struct CKeySet
     pub current: size_t,
 
     pub flags: elektraKeySetFlags,
+
+    pub refs: u16,
+    pub reserved: u16,
 }
 
 impl CKeySet {
     pub fn default() -> CKeySet {
         CKeySet {
+            array: ptr::null_mut(),
             size: 0,
             alloc: 0,
             cursor: ptr::null_mut(),
             current: 0,
-            flags: 0
+            flags: 0,
+            refs: 0,
+            reserved: 0,
         }
     }
 }
 
-pub trait CKeyConvertable {
+pub trait CKeyEquivalent {
     fn to_ckey(&self) -> CKey;
-    fn from_ckey(c_key: CKey) -> Key;
+    fn from_ckey(c_key: &CKey) -> Key;
 }
 
-impl CKeyConvertable for Key {
+impl CKeyEquivalent for Key {
     fn to_ckey(&self) -> CKey {
+        let name = CString::new(self.name().clone())
+            .expect("qq")
+            .into_raw();
+
+        let data = CString::new("qq")
+            .expect("qq")
+            .into_raw();
+
+        let uKey = CString::new("qq")
+            .expect("qq")
+            .into_raw();
+
         CKey {
-            data: CDataUnion { c: CString::new("qq").expect("qq").into_raw() },
+            data: CDataUnion { c: data },
             dataSize: 0,
-            key: CString::new(self.name().clone()).expect("qq").into_raw(),
+            key: name,
             keySize: 0,
-            ukey: CString::new("qq").expect("qq").into_raw(),
+            ukey: uKey,
             keyUSize: 0,
             ksReference: 0,
             flags: 0,
@@ -108,12 +128,60 @@ impl CKeyConvertable for Key {
         }
     }
 
-    fn from_ckey(c_key: CKey) -> Key {
+    fn from_ckey(c_key: &CKey) -> Key {
         let cstr = unsafe { CStr::from_ptr(c_key.key) };
+
         let keyNameStr = cstr.to_str()
             .expect("key name cannot be cast to string")
             .to_string();
 
-        Key::new(String::from(keyNameStr))
+        Key::new(keyNameStr)
+    }
+}
+
+pub trait CKeySetEquivalent {
+    fn to_ckeyset(&self) -> CKeySet;
+    fn from_ckeyset(c_keyset: &CKeySet) -> KeySet;
+}
+
+impl CKeySetEquivalent for KeySet {
+    fn to_ckeyset(&self) -> CKeySet {
+        let mut cArray: Vec<*const CKey> = Vec::new();
+
+        for (name, key) in self.values() {
+            cArray.push(&key.to_ckey());
+        }
+
+        CKeySet {
+            array: cArray.as_mut_ptr(),
+            size: self.size(),
+            alloc: self.size(),
+            cursor: ptr::null_mut(),
+            current: 0,
+            flags: 0,
+            refs: 0,
+            reserved: 0
+        }
+    }
+
+    fn from_ckeyset(c_keyset: &CKeySet) -> KeySet {
+        let firstKey = unsafe {
+            *c_keyset.array
+        };
+
+        let keyArray = unsafe {
+            std::slice::from_raw_parts(firstKey, c_keyset.alloc)
+        };
+
+        let keySet: KeySet = keyArray
+            .iter()
+            .map(|key| {
+                Key::from_ckey(key)
+            })
+            .collect();
+
+        println!("{}", keySet.size());
+
+        keySet
     }
 }
