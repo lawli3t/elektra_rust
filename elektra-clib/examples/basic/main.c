@@ -4,13 +4,26 @@
 #include <elektra.h>
 
 int main (void) {
-    Key * key = keyNew ("testqq", KEY_END);
+    Key * key = keyNew ("user:/test/qwe/asd", KEY_END);
     printf("%s\n", keyName (key));
 
-    keySetName (key, "qweqwe");
+    Key * key2 = keyNew ("user:/test/qwe/asd/qwe", KEY_END);
+    printf("%s\n", keyName (key2));
+
+    printf("--------------\n");
+
+    printf("%i\n", keyIsBelow (key, key2));
+
+    printf("--------------\n");
+
+    printf("%i\n", keyAddName (key, "yyyyyyy"));
+    printf("%s\n", keyName (key));
+
+    printf("%i\n", keySetName (key, "system:/asd/qwe/asd"));
     printf("%s\n", keyName (key));
 
     keyDel (key);
+    keyDel (key2);
 
     // KeySet * ks = ksNew (1, KS_END);
     // ksAppendKey(ks, key);

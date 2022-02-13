@@ -8,7 +8,7 @@ use libc::{size_t, c_char, c_int, c_uint};
 
 use bitflags::bitflags;
 
-use elektra_rust::key::{Key, KeySet};
+use elektra_rust::key::{Key, KeyBuilder, KeyError, KeySet};
 
 bitflags! {
     pub struct KeyNewFlags: i32 {
@@ -62,6 +62,64 @@ impl CKey {
             meta: &mut CKeySet::default(),
         }
     }
+
+    pub fn overwrite(key: *mut CKey, rustKey: Key) {
+        unsafe {
+            let ukeyPtr = (*key).ukey;
+            let dataPtr = (*key).data.c;
+            let keyPtr = (*key).key;
+
+            std::ptr::write(key, rustKey.to_ckey());
+
+            drop(
+                CString::from_raw(
+                    ukeyPtr
+                )
+            );
+
+            drop(
+                CString::from_raw(
+                    dataPtr
+                )
+            );
+
+            drop(
+                CString::from_raw(
+                    keyPtr
+                )
+            );
+        };
+    }
+
+    pub fn destroy_fields(key: *mut CKey) {
+        unsafe {
+            drop(
+                CString::from_raw(
+                    (*key).ukey
+                )
+            );
+
+            drop(
+                CString::from_raw(
+                    (*key).data.c
+                )
+            );
+
+            drop(
+                CString::from_raw(
+                    (*key).key
+                )
+            );
+        }
+    }
+
+    pub fn destroy(key: *mut CKey) {
+        unsafe {
+            // TODO might need to swap so no accesses to free'd memory is possible
+            Self::destroy_fields(key);
+            Box::from_raw(key);
+        };
+    }
 }
 
 #[repr(C)]
@@ -98,7 +156,7 @@ impl CKeySet {
 
 pub trait CKeyEquivalent {
     fn to_ckey(&self) -> CKey;
-    fn from_ckey(c_key: &CKey) -> Key;
+    fn from_ckey(c_key: *mut CKey) -> Result<Key, KeyError>;
 }
 
 impl CKeyEquivalent for Key {
@@ -128,14 +186,19 @@ impl CKeyEquivalent for Key {
         }
     }
 
-    fn from_ckey(c_key: &CKey) -> Key {
-        let cstr = unsafe { CStr::from_ptr(c_key.key) };
+    fn from_ckey(c_key: *mut CKey) -> Result<Key, KeyError> {
+        if c_key.is_null() {
+            return Err(KeyError::NullPointerError);
+        }
+
+        let cstr = unsafe { CStr::from_ptr((*c_key).key) };
 
         let keyNameStr = cstr.to_str()
             .expect("key name cannot be cast to string")
             .to_string();
 
-        Key::new(keyNameStr)
+        KeyBuilder::from_string(keyNameStr)
+            .build()
     }
 }
 
@@ -160,11 +223,12 @@ impl CKeySetEquivalent for KeySet {
             current: 0,
             flags: 0,
             refs: 0,
-            reserved: 0
+            reserved: 0,
         }
     }
 
     fn from_ckeyset(c_keyset: &CKeySet) -> KeySet {
+        /*
         let firstKey = unsafe {
             *c_keyset.array
         };
@@ -176,12 +240,14 @@ impl CKeySetEquivalent for KeySet {
         let keySet: KeySet = keyArray
             .iter()
             .map(|key| {
-                Key::from_ckey(key)
+                Key::from_ckey(*key)
             })
             .collect();
 
         println!("{}", keySet.size());
 
         keySet
+         */
+        unimplemented!("not implemented yet")
     }
 }

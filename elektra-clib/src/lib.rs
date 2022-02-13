@@ -4,6 +4,7 @@
 #![allow(non_camel_case_types)]
 #![allow(unused_variables)]
 
+use std::cmp::Ordering;
 use std::ffi::{CStr, CString, VaList, VaListImpl};
 use std::ptr;
 use libc::{ssize_t, size_t, c_char, c_int, c_void};
@@ -16,44 +17,7 @@ use crate::structs::{
     CKeyEquivalent, CKeySetEquivalent
 };
 
-use elektra_rust::key::{Key, KeySet};
-
-/*
-#[no_mangle]
-pub extern "C" fn kdbOpen(contract: *const CKeySet, parentKey: *mut CKey) -> *mut CKDB;
-#[no_mangle]
-pub extern "C" fn kdbClose(handle: *mut CKDB, errorKey: *mut CKey) -> ::std::os::raw::c_int;
-#[no_mangle]
-pub extern "C" fn kdbGet(
-    handle: *mut CKDB,
-    returned: *mut KeySet,
-    parentKey: *mut Key,
-) -> ::std::os::raw::c_int;
-#[no_mangle]
-pub extern "C" fn kdbSet(
-    handle: *mut CKDB,
-    returned: *mut KeySet,
-    parentKey: *mut Key,
-) -> ::std::os::raw::c_int;
-*/
-
-fn cleanup_c_key(key: *mut CKey) {
-    unsafe {
-        CString::from_raw(
-            (*key).ukey
-        );
-
-        CString::from_raw(
-            (*key).data.c
-        );
-
-        CString::from_raw(
-            (*key).key
-        );
-
-        Box::from_raw(key)
-    };
-}
+use elektra_rust::key::{Key, KeyBuilder, KeyError, KeySet};
 
 #[no_mangle]
 pub unsafe extern "C" fn keyNew(keyname: *const c_char, args: ...) -> *const CKey {
@@ -73,27 +37,34 @@ pub extern "C" fn keyVNew(keyname: *const c_char, mut ap: VaList) -> *const CKey
         .expect("key name cannot be cast to string")
         .to_string();
 
-    let key: Key = Key::new(keyNameStr);
+    let keyResult = KeyBuilder::from_string(keyNameStr)
+        .build();
 
-    loop {
-        let flag_argument = unsafe { ap.arg::<c_int>() };
+    if let Ok(key) = keyResult {
+        loop {
+            let flag_argument = unsafe { ap.arg::<c_int>() };
 
-        let flags = KeyNewFlags::from_bits(flag_argument)
-            .expect("Cannot create Flags from va_list args");
+            let flags = KeyNewFlags::from_bits(flag_argument)
+                .expect("Cannot create Flags from va_list args");
 
-        if flags.contains(KeyNewFlags::KEY_NAME) {
-            println!("KEY_NAME");
-        } else if flag_argument == 0 {
-            println!("KEY_END");
-            break
-        } else {
-            break
+            if flags.contains(KeyNewFlags::KEY_NAME) {
+                println!("KEY_NAME");
+            } else if flag_argument == 0 {
+                println!("KEY_END");
+                break
+            } else {
+                break
+            }
         }
+
+        Box::into_raw(
+            Box::new(key.to_ckey())
+        )
+    } else {
+        return ptr::null_mut()
     }
 
-    Box::into_raw(
-        Box::new(key.to_ckey())
-    )
+
 }
 
 #[no_mangle]
@@ -103,6 +74,7 @@ pub extern "C" fn keyCopy(dest: *mut CKey, source: *const CKey, flags: elektraCo
 }
 
 #[no_mangle]
+#[deprecated]
 pub extern "C" fn keyClear(key: *mut CKey) -> c_int {
     1
 }
@@ -113,7 +85,7 @@ pub extern "C" fn keyDel(key: *mut CKey) -> c_int {
         return -1;
     }
 
-    cleanup_c_key(key);
+    CKey::destroy(key);
 
     return 0;
 }
@@ -134,7 +106,7 @@ pub extern "C" fn keyCopyAllMeta(dest: *mut CKey, source: *const CKey) -> c_int 
 
 #[no_mangle]
 pub extern "C" fn keyGetMeta(key: *const CKey, metaName: *const c_char) -> *const CKey {
-    &CKey::default()
+    &mut CKey::default()
 }
 
 #[no_mangle]
@@ -148,7 +120,9 @@ pub extern "C" fn keySetMeta(
 
 #[no_mangle]
 pub extern "C" fn keyMeta(key: *mut CKey) -> *mut CKeySet {
-    &mut CKeySet::default()
+    unsafe {
+        (*key).meta
+    }
 }
 
 #[no_mangle]
@@ -162,13 +136,39 @@ pub extern "C" fn keyNeedSync(key: *const CKey) -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn keyIsBelow(key: *const CKey, check: *const CKey) -> c_int {
-    1
+pub extern "C" fn keyIsBelow(key: *mut CKey, check: *mut CKey) -> c_int {
+    let mut thatKey = match Key::from_ckey(key) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let mut otherKey = match Key::from_ckey(check) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    return match thatKey.cmp(&otherKey) {
+        Ordering::Equal | Ordering::Greater => 0,
+        Ordering::Less => 1,
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn keyIsBelowOrSame(key: *const CKey, check: *const CKey) -> c_int {
-    1
+pub extern "C" fn keyIsBelowOrSame(key: *mut CKey, check: *mut CKey) -> c_int {
+    let mut thatKey = match Key::from_ckey(key) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let mut otherKey = match Key::from_ckey(check) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    return match thatKey.cmp(&otherKey) {
+        Ordering::Greater => 0,
+        Ordering::Less | Ordering::Equal => 1,
+    }
 }
 
 #[no_mangle]
@@ -177,82 +177,59 @@ pub extern "C" fn keyIsDirectlyBelow(key: *const CKey, check: *const CKey) -> c_
 }
 
 #[no_mangle]
-pub extern "C" fn keyIsBinary(key: *const CKey) -> c_int {
-    1
-}
-
-#[no_mangle]
-pub extern "C" fn keyIsString(key: *const CKey) -> c_int {
-    1
-}
-
-#[no_mangle]
 pub extern "C" fn keyName(key: *const CKey) -> *const c_char {
-    unsafe { (*key).key }
-
-    /*
-    let mut key = unsafe { Key::from_ckey(&*key) };
-
-    let name = CString::new(key.name().clone())
-        .unwrap();
-
-    name.into_raw() as *mut u8
-    */
+    unsafe {
+        (*key).key
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn keyGetNameSize(key: *const CKey) -> ssize_t {
-    1
-
-}
-
-#[no_mangle]
-pub extern "C" fn keyGetName(
-    key: *const CKey,
-    returnedName: *mut c_char,
-    maxSize: size_t,
-) -> ssize_t {
-    1
-}
-
-#[no_mangle]
-pub extern "C" fn keySetName(key: *mut CKey, newname: *const c_char) -> ssize_t {
-    let mut rustKey = unsafe { Key::from_ckey(&*key) };
-
-    let cstr = unsafe { CStr::from_ptr(newname) };
-    let keyNameStr = cstr.to_str()
-        .unwrap()
-        .to_string();
-
-    rustKey.set_name(keyNameStr);
-
-    unsafe {
-        let ukeyPtr = (*key).ukey;
-        let dataPtr = (*key).data.c;
-        let keyPtr = (*key).key;
-
-        std::ptr::write(key, rustKey.to_ckey());
-
-        CString::from_raw(
-            ukeyPtr
-        );
-
-        CString::from_raw(
-            dataPtr
-        );
-
-        CString::from_raw(
-            keyPtr
-        );
-    };
+    let cstr = unsafe { CStr::from_ptr((*key).key) };
 
     cstr.to_bytes_with_nul().len() as ssize_t
 }
 
 #[no_mangle]
-pub extern "C" fn keyAddName(key: *mut CKey, addName: *const c_char) -> ssize_t {
-    1
+pub extern "C" fn keySetName(key: *mut CKey, newname: *const c_char) -> ssize_t {
+    let cstr = unsafe { CStr::from_ptr(newname) };
+    let newNameStr = match cstr.to_str() {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
 
+    let mut rustKey = match Key::from_ckey(key) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    if let Ok(_) = rustKey.set_name(newNameStr) {
+        CKey::overwrite(key, rustKey);
+        return keyGetNameSize(key);
+    }
+
+    return -1;
+}
+
+#[no_mangle]
+pub extern "C" fn keyAddName(key: *mut CKey, addName: *const c_char) -> ssize_t {
+    let cstr = unsafe { CStr::from_ptr(addName) };
+    let addNameStr = match cstr.to_str() {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let mut rustKey = match Key::from_ckey(key) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    if let Ok(_) = rustKey.append_name(addNameStr) {
+        CKey::overwrite(key, rustKey);
+        return keyGetNameSize(key);
+    }
+
+    return -1;
 }
 
 #[no_mangle]
@@ -270,21 +247,6 @@ pub extern "C" fn keyGetUnescapedNameSize(key: *const CKey) -> ssize_t {
 pub extern "C" fn keyBaseName(key: *const CKey) -> *const c_char {
     CString::new("qq").expect("CString new failed").into_raw()
 
-}
-
-#[no_mangle]
-pub extern "C" fn keyGetBaseNameSize(key: *const CKey) -> ssize_t {
-    1
-
-}
-
-#[no_mangle]
-pub extern "C" fn keyGetBaseName(
-    key: *const CKey,
-    returned: *mut c_char,
-    maxSize: size_t,
-) -> ssize_t {
-    1
 }
 
 #[no_mangle]
@@ -327,36 +289,7 @@ pub extern "C" fn keyString(key: *const CKey) -> *const c_char {
 }
 
 #[no_mangle]
-pub extern "C" fn keyGetString(
-    key: *const CKey,
-    returnedString: *mut c_char,
-    maxSize: size_t,
-) -> ssize_t {
-    1
-}
-
-#[no_mangle]
 pub extern "C" fn keySetString(key: *mut CKey, newString: *const c_char) -> ssize_t {
-    1
-
-}
-
-#[no_mangle]
-pub extern "C" fn keyGetBinary(
-    key: *const CKey,
-    returnedBinary: *mut c_void,
-    maxSize: size_t,
-) -> ssize_t {
-    1
-
-}
-
-#[no_mangle]
-pub extern "C" fn keySetBinary(
-    key: *mut CKey,
-    newBinary: *const c_void,
-    dataSize: size_t,
-) -> ssize_t {
     1
 
 }
