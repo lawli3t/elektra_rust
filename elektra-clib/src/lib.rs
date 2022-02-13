@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use std::ffi::{CStr, CString, VaList, VaListImpl};
 use std::ptr;
 use std::str::FromStr;
+use std::convert::TryFrom;
 use libc::{ssize_t, size_t, c_char, c_int, c_void};
 
 mod structs;
@@ -15,7 +16,6 @@ mod structs;
 use crate::structs::{
     CKey, CKeySet,
     KeyNewFlags, elektraNamespace, elektraCopyFlags, elektraLockFlags, elektraLookupFlags,
-    CKeyEquivalent, CKeySetEquivalent
 };
 
 use elektra_rust::key::{Key, KeyBuilder, KeyName, KeySet};
@@ -58,7 +58,7 @@ pub extern "C" fn keyVNew(keyname: *const c_char, mut ap: VaList) -> *const CKey
             }
 
             return Box::into_raw(
-                Box::new(key.to_ckey())
+                Box::new(key.into())
             );
         }
     }
@@ -104,20 +104,6 @@ pub extern "C" fn keyCopyAllMeta(dest: *mut CKey, source: *const CKey) -> c_int 
 }
 
 #[no_mangle]
-pub extern "C" fn keyGetMeta(key: *const CKey, metaName: *const c_char) -> *const CKey {
-    &mut CKey::default()
-}
-
-#[no_mangle]
-pub extern "C" fn keySetMeta(
-    key: *mut CKey,
-    metaName: *const c_char,
-    newMetaString: *const c_char,
-) -> ssize_t {
-    1
-}
-
-#[no_mangle]
 pub extern "C" fn keyMeta(key: *mut CKey) -> *mut CKeySet {
     unsafe {
         (*key).meta
@@ -126,8 +112,28 @@ pub extern "C" fn keyMeta(key: *mut CKey) -> *mut CKeySet {
 
 #[no_mangle]
 pub extern "C" fn keyCmp(k1: *const CKey, k2: *const CKey) -> c_int {
-    1
+    if k1.is_null() || k2.is_null() {
+        return -1;
+    }
+
+    unsafe {
+        let k1 = &*k1;
+        let k2 = &*k2;
+
+        let that_key = match Key::try_from(k1) {
+            Ok(x) => x,
+            Err(_) => return -1,
+        };
+
+        let other_key = match Key::try_from(k2) {
+            Ok(x) => x,
+            Err(_) => return -1,
+        };
+
+        return that_key.cmp(&other_key) as c_int;
+    }
 }
+
 
 #[no_mangle]
 pub extern "C" fn keyNeedSync(key: *const CKey) -> c_int {
@@ -136,37 +142,55 @@ pub extern "C" fn keyNeedSync(key: *const CKey) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn keyIsBelow(key: *mut CKey, check: *mut CKey) -> c_int {
-    let that_key = match Key::from_ckey(key) {
-        Ok(x) => x,
-        Err(_) => return -1,
-    };
+    if key.is_null() || check.is_null() {
+        return -1;
+    }
 
-    let other_key = match Key::from_ckey(check) {
-        Ok(x) => x,
-        Err(_) => return -1,
-    };
+    unsafe {
+        let key1 = &*key;
+        let key2 = &*check;
 
-    return match that_key.cmp(&other_key) {
-        Ordering::Equal | Ordering::Greater => 0,
-        Ordering::Less => 1,
+        let that_key = match Key::try_from(key1) {
+            Ok(x) => x,
+            Err(_) => return -1,
+        };
+
+        let other_key = match Key::try_from(key2) {
+            Ok(x) => x,
+            Err(_) => return -1,
+        };
+
+        return match that_key.cmp(&other_key) {
+            Ordering::Equal | Ordering::Greater => 0,
+            Ordering::Less => 1,
+        }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn keyIsBelowOrSame(key: *mut CKey, check: *mut CKey) -> c_int {
-    let that_key = match Key::from_ckey(key) {
-        Ok(x) => x,
-        Err(_) => return -1,
-    };
+    if key.is_null() || check.is_null() {
+        return -1;
+    }
 
-    let other_key = match Key::from_ckey(check) {
-        Ok(x) => x,
-        Err(_) => return -1,
-    };
+    unsafe {
+        let key1 = &*key;
+        let key2 = &*check;
 
-    return match that_key.cmp(&other_key) {
-        Ordering::Greater => 0,
-        Ordering::Less | Ordering::Equal => 1,
+        let that_key = match Key::try_from(key1) {
+            Ok(x) => x,
+            Err(_) => return -1,
+        };
+
+        let other_key = match Key::try_from(key2) {
+            Ok(x) => x,
+            Err(_) => return -1,
+        };
+
+        return match that_key.cmp(&other_key) {
+            Ordering::Greater => 0,
+            Ordering::Less | Ordering::Equal => 1,
+        }
     }
 }
 
@@ -191,22 +215,29 @@ pub extern "C" fn keyGetNameSize(key: *const CKey) -> ssize_t {
 
 #[no_mangle]
 pub extern "C" fn keySetName(key: *mut CKey, newname: *const c_char) -> ssize_t {
+    if key.is_null() || newname.is_null() {
+        return -1;
+    }
+
     let cstr = unsafe { CStr::from_ptr(newname) };
     let newNameStr = match cstr.to_str() {
         Ok(x) => x,
         Err(_) => return -1,
     };
 
-
     if let Ok(key_name) = KeyName::from_str(newNameStr) {
-        let mut rustKey = match Key::from_ckey(key) {
-            Ok(x) => x,
-            Err(_) => return -1,
-        };
+        unsafe {
+            let key1 = &*key;
 
-        rustKey.set_name(key_name);
-        CKey::overwrite(key, rustKey);
-        return keyGetNameSize(key);
+            let mut rust_key = match Key::try_from(key1) {
+                Ok(x) => x,
+                Err(_) => return -1,
+            };
+
+            rust_key.set_name(key_name);
+            CKey::overwrite(key, rust_key);
+            return keyGetNameSize(key);
+        }
     }
 
     return -1;
@@ -220,14 +251,18 @@ pub extern "C" fn keyAddName(key: *mut CKey, addName: *const c_char) -> ssize_t 
         Err(_) => return -1,
     };
 
-    let mut rustKey = match Key::from_ckey(key) {
-        Ok(x) => x,
-        Err(_) => return -1,
-    };
+    unsafe {
+        let key1 = &*key;
 
-    rustKey.append_name(addNameStr);
-    CKey::overwrite(key, rustKey);
-    return keyGetNameSize(key);
+        let mut rust_key = match Key::try_from(key1) {
+            Ok(x) => x,
+            Err(_) => return -1,
+        };
+
+        rust_key.append_name(addNameStr);
+        CKey::overwrite(key, rust_key);
+        return keyGetNameSize(key);
+    }
 }
 
 #[no_mangle]
@@ -307,7 +342,7 @@ pub extern "C" fn keyIsLocked(key: *const CKey, what: elektraLockFlags) -> c_int
 #[no_mangle]
 pub extern "C" fn ksNew(alloc: size_t) -> *mut CKeySet {
     let ks = KeySet::default();
-    &mut ks.to_ckeyset()
+    &mut ks.into()
 }
 
 #[no_mangle]

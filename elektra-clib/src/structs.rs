@@ -2,6 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(unused_variables)]
 
+use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
 use std::ptr;
 use std::str::FromStr;
@@ -70,7 +71,8 @@ impl CKey {
             let dataPtr = (*key).data.c;
             let keyPtr = (*key).key;
 
-            std::ptr::write(key, rustKey.to_ckey());
+            let c_key: CKey = rustKey.into();
+            std::ptr::write(key, c_key);
 
             drop(
                 CString::from_raw(
@@ -123,6 +125,48 @@ impl CKey {
     }
 }
 
+impl Into<CKey> for Key {
+    fn into(self) -> CKey {
+        let name = CString::new(self.name().clone())
+            .expect("qq")
+            .into_raw();
+
+        let data = CString::new("qq")
+            .expect("qq")
+            .into_raw();
+
+        let uKey = CString::new("qq")
+            .expect("qq")
+            .into_raw();
+
+        CKey {
+            data: CDataUnion { c: data },
+            dataSize: 0,
+            key: name,
+            keySize: 0,
+            ukey: uKey,
+            keyUSize: 0,
+            ksReference: 0,
+            flags: 0,
+            meta: &mut CKeySet::default(),
+        }
+    }
+}
+
+impl TryFrom<&CKey> for Key {
+    type Error = KeyError;
+
+    fn try_from(value: &CKey) -> Result<Self, Self::Error> {
+        let cstr = unsafe { CStr::from_ptr(value.key) };
+
+        let key_name_cstr = cstr.to_str()
+            .expect("key name cannot be cast to string");
+
+        KeyBuilder::from_str(key_name_cstr)?
+            .build()
+    }
+}
+
 #[repr(C)]
 pub struct CKeySet
 {
@@ -155,99 +199,16 @@ impl CKeySet {
     }
 }
 
-pub trait CKeyEquivalent {
-    fn to_ckey(&self) -> CKey;
-    fn from_ckey(c_key: *mut CKey) -> Result<Key, KeyError>;
-}
-
-impl CKeyEquivalent for Key {
-    fn to_ckey(&self) -> CKey {
-        let name = CString::new(self.name().clone())
-            .expect("qq")
-            .into_raw();
-
-        let data = CString::new("qq")
-            .expect("qq")
-            .into_raw();
-
-        let uKey = CString::new("qq")
-            .expect("qq")
-            .into_raw();
-
-        CKey {
-            data: CDataUnion { c: data },
-            dataSize: 0,
-            key: name,
-            keySize: 0,
-            ukey: uKey,
-            keyUSize: 0,
-            ksReference: 0,
-            flags: 0,
-            meta: &mut CKeySet::default(),
-        }
-    }
-
-    fn from_ckey(c_key: *mut CKey) -> Result<Key, KeyError> {
-        if c_key.is_null() {
-            return Err(KeyError::NullPointerError);
-        }
-
-        let cstr = unsafe { CStr::from_ptr((*c_key).key) };
-
-        let keyNameStr = cstr.to_str()
-            .expect("key name cannot be cast to string");
-
-        KeyBuilder::from_str(keyNameStr)?
-            .build()
+impl Into<CKeySet> for KeySet {
+    fn into(self) -> CKeySet {
+        todo!()
     }
 }
 
-pub trait CKeySetEquivalent {
-    fn to_ckeyset(&self) -> CKeySet;
-    fn from_ckeyset(c_keyset: &CKeySet) -> KeySet;
-}
+impl TryFrom<&CKeySet> for KeySet {
+    type Error = KeyError;
 
-impl CKeySetEquivalent for KeySet {
-    fn to_ckeyset(&self) -> CKeySet {
-        let mut cArray: Vec<*const CKey> = Vec::new();
-
-        for (name, key) in self.values() {
-            cArray.push(&key.to_ckey());
-        }
-
-        CKeySet {
-            array: cArray.as_mut_ptr(),
-            size: self.size(),
-            alloc: self.size(),
-            cursor: ptr::null_mut(),
-            current: 0,
-            flags: 0,
-            refs: 0,
-            reserved: 0,
-        }
-    }
-
-    fn from_ckeyset(c_keyset: &CKeySet) -> KeySet {
-        /*
-        let firstKey = unsafe {
-            *c_keyset.array
-        };
-
-        let keyArray = unsafe {
-            std::slice::from_raw_parts(firstKey, c_keyset.alloc)
-        };
-
-        let keySet: KeySet = keyArray
-            .iter()
-            .map(|key| {
-                Key::from_ckey(*key)
-            })
-            .collect();
-
-        println!("{}", keySet.size());
-
-        keySet
-         */
-        unimplemented!("not implemented yet")
+    fn try_from(value: &CKeySet) -> Result<Self, Self::Error> {
+        todo!()
     }
 }
