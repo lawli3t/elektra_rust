@@ -30,7 +30,7 @@ pub unsafe extern "C" fn keyNew(keyname: *const c_char, args: ...) -> *const CKe
 #[no_mangle]
 pub extern "C" fn keyVNew(keyname: *const c_char, mut ap: VaList) -> *const CKey {
     if keyname.is_null() {
-        return ptr::null_mut()
+        return ptr::null_mut();
     }
 
     let cstr = unsafe { CStr::from_ptr(keyname) };
@@ -51,9 +51,9 @@ pub extern "C" fn keyVNew(keyname: *const c_char, mut ap: VaList) -> *const CKey
                     println!("KEY_NAME");
                 } else if flag_argument == 0 {
                     println!("KEY_END");
-                    break
+                    break;
                 } else {
-                    break
+                    break;
                 }
             }
 
@@ -69,7 +69,6 @@ pub extern "C" fn keyVNew(keyname: *const c_char, mut ap: VaList) -> *const CKey
 #[no_mangle]
 pub extern "C" fn keyCopy(dest: *mut CKey, source: *const CKey, flags: elektraCopyFlags) -> *mut CKey {
     &mut CKey::default()
-
 }
 
 #[no_mangle]
@@ -116,22 +115,20 @@ pub extern "C" fn keyCmp(k1: *const CKey, k2: *const CKey) -> c_int {
         return -1;
     }
 
-    unsafe {
-        let k1 = &*k1;
-        let k2 = &*k2;
+    let k1 = unsafe { &*k1 };
+    let k2 = unsafe { &*k2 };
 
-        let that_key = match Key::try_from(k1) {
-            Ok(x) => x,
-            Err(_) => return -1,
-        };
+    let that_key = match Key::try_from(k1) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
 
-        let other_key = match Key::try_from(k2) {
-            Ok(x) => x,
-            Err(_) => return -1,
-        };
+    let other_key = match Key::try_from(k2) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
 
-        return that_key.cmp(&other_key) as c_int;
-    }
+    return that_key.cmp(&other_key) as c_int;
 }
 
 
@@ -146,25 +143,23 @@ pub extern "C" fn keyIsBelow(key: *mut CKey, check: *mut CKey) -> c_int {
         return -1;
     }
 
-    unsafe {
-        let key1 = &*key;
-        let key2 = &*check;
+    let key1 = unsafe { &*key };
+    let key2 = unsafe { &*check };
 
-        let that_key = match Key::try_from(key1) {
-            Ok(x) => x,
-            Err(_) => return -1,
-        };
+    let that_key = match Key::try_from(key1) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
 
-        let other_key = match Key::try_from(key2) {
-            Ok(x) => x,
-            Err(_) => return -1,
-        };
+    let other_key = match Key::try_from(key2) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
 
-        return match that_key.cmp(&other_key) {
-            Ordering::Equal | Ordering::Greater => 0,
-            Ordering::Less => 1,
-        }
-    }
+    return match that_key.cmp(&other_key) {
+        Ordering::Equal | Ordering::Greater => 0,
+        Ordering::Less => 1,
+    };
 }
 
 #[no_mangle]
@@ -173,25 +168,23 @@ pub extern "C" fn keyIsBelowOrSame(key: *mut CKey, check: *mut CKey) -> c_int {
         return -1;
     }
 
-    unsafe {
-        let key1 = &*key;
-        let key2 = &*check;
+    let key1 = unsafe { &*key };
+    let key2 = unsafe { &*check };
 
-        let that_key = match Key::try_from(key1) {
-            Ok(x) => x,
-            Err(_) => return -1,
-        };
+    let that_key = match Key::try_from(key1) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
 
-        let other_key = match Key::try_from(key2) {
-            Ok(x) => x,
-            Err(_) => return -1,
-        };
+    let other_key = match Key::try_from(key2) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
 
-        return match that_key.cmp(&other_key) {
-            Ordering::Greater => 0,
-            Ordering::Less | Ordering::Equal => 1,
-        }
-    }
+    return match that_key.cmp(&other_key) {
+        Ordering::Greater => 0,
+        Ordering::Less | Ordering::Equal => 1,
+    };
 }
 
 #[no_mangle]
@@ -226,18 +219,16 @@ pub extern "C" fn keySetName(key: *mut CKey, newname: *const c_char) -> ssize_t 
     };
 
     if let Ok(key_name) = KeyName::from_str(newNameStr) {
-        unsafe {
-            let key1 = &*key;
+        let key1 = unsafe { &*key };
 
-            let mut rust_key = match Key::try_from(key1) {
-                Ok(x) => x,
-                Err(_) => return -1,
-            };
+        let mut rust_key = match Key::try_from(key1) {
+            Ok(x) => x,
+            Err(_) => return -1,
+        };
 
-            rust_key.set_name(key_name);
-            CKey::overwrite(key, rust_key);
-            return keyGetNameSize(key);
-        }
+        rust_key.set_name(key_name);
+        CKey::overwrite(key, rust_key);
+        return keyGetNameSize(key);
     }
 
     return -1;
@@ -251,18 +242,16 @@ pub extern "C" fn keyAddName(key: *mut CKey, addName: *const c_char) -> ssize_t 
         Err(_) => return -1,
     };
 
-    unsafe {
-        let key1 = &*key;
+    let key1 = unsafe { &*key };
 
-        let mut rust_key = match Key::try_from(key1) {
-            Ok(x) => x,
-            Err(_) => return -1,
-        };
+    let mut rust_key = match Key::try_from(key1) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
 
-        rust_key.append_name(addNameStr);
-        CKey::overwrite(key, rust_key);
-        return keyGetNameSize(key);
-    }
+    rust_key.append_name(addNameStr);
+    CKey::overwrite(key, rust_key);
+    return keyGetNameSize(key);
 }
 
 #[no_mangle]
@@ -273,25 +262,21 @@ pub extern "C" fn keyUnescapedName(key: *const CKey) -> *const c_void {
 #[no_mangle]
 pub extern "C" fn keyGetUnescapedNameSize(key: *const CKey) -> ssize_t {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn keyBaseName(key: *const CKey) -> *const c_char {
     CString::new("qq").expect("CString new failed").into_raw()
-
 }
 
 #[no_mangle]
 pub extern "C" fn keySetBaseName(key: *mut CKey, baseName: *const c_char) -> ssize_t {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn keyAddBaseName(key: *mut CKey, baseName: *const c_char) -> ssize_t {
     1
-
 }
 
 #[no_mangle]
@@ -302,7 +287,6 @@ pub extern "C" fn keyGetNamespace(key: *const CKey) -> elektraNamespace {
 #[no_mangle]
 pub extern "C" fn keySetNamespace(key: *mut CKey, ns: elektraNamespace) -> ssize_t {
     1
-
 }
 
 #[no_mangle]
@@ -313,7 +297,6 @@ pub extern "C" fn keyValue(key: *const CKey) -> *const c_void {
 #[no_mangle]
 pub extern "C" fn keyGetValueSize(key: *const CKey) -> ssize_t {
     1
-
 }
 
 #[no_mangle]
@@ -324,19 +307,16 @@ pub extern "C" fn keyString(key: *const CKey) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn keySetString(key: *mut CKey, newString: *const c_char) -> ssize_t {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn keyLock(key: *mut CKey, what: elektraLockFlags) -> c_int {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn keyIsLocked(key: *const CKey, what: elektraLockFlags) -> c_int {
     1
-
 }
 
 #[no_mangle]
@@ -353,55 +333,46 @@ pub extern "C" fn ksDup(source: *const CKeySet) -> *mut CKeySet {
 #[no_mangle]
 pub extern "C" fn ksCopy(dest: *mut CKeySet, source: *const CKeySet) -> c_int {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn ksClear(ks: *mut CKeySet) -> c_int {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn ksDel(ks: *mut CKeySet) -> c_int {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn ksGetSize(ks: *const CKeySet) -> ssize_t {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn ksAppendKey(ks: *mut CKeySet, toAppend: *mut CKey) -> ssize_t {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn ksAppend(ks: *mut CKeySet, toAppend: *const CKeySet) -> ssize_t {
     1
-
 }
 
 #[no_mangle]
 pub extern "C" fn ksCut(ks: *mut CKeySet, cutpoint: *const CKey) -> *mut CKeySet {
     &mut CKeySet::default()
-
 }
 
 #[no_mangle]
 pub extern "C" fn ksPop(ks: *mut CKeySet) -> *mut CKey {
     &mut CKey::default()
-
 }
 
 #[no_mangle]
 pub extern "C" fn ksLookup(ks: *mut CKeySet, k: *mut CKey, options: elektraLookupFlags) -> *mut CKey {
     &mut CKey::default()
-
 }
 
 #[no_mangle]
@@ -411,5 +382,4 @@ pub extern "C" fn ksLookupByName(
     options: elektraLookupFlags,
 ) -> *mut CKey {
     &mut CKey::default()
-
 }
