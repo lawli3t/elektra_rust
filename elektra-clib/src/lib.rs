@@ -7,6 +7,7 @@
 use std::cmp::Ordering;
 use std::ffi::{CStr, CString, VaList, VaListImpl};
 use std::ptr;
+use std::str::FromStr;
 use libc::{ssize_t, size_t, c_char, c_int, c_void};
 
 mod structs;
@@ -17,7 +18,7 @@ use crate::structs::{
     CKeyEquivalent, CKeySetEquivalent
 };
 
-use elektra_rust::key::{Key, KeyBuilder, KeyError, KeySet};
+use elektra_rust::key::{Key, KeyBuilder, KeyName, KeySet};
 
 #[no_mangle]
 pub unsafe extern "C" fn keyNew(keyname: *const c_char, args: ...) -> *const CKey {
@@ -34,37 +35,35 @@ pub extern "C" fn keyVNew(keyname: *const c_char, mut ap: VaList) -> *const CKey
 
     let cstr = unsafe { CStr::from_ptr(keyname) };
     let keyNameStr = cstr.to_str()
-        .expect("key name cannot be cast to string")
-        .to_string();
+        .expect("key name cannot be cast to string");
 
-    let keyResult = KeyBuilder::from_string(keyNameStr)
-        .build();
+    if let Ok(builder) = KeyBuilder::from_str(keyNameStr) {
+        let keyResult = builder.build();
 
-    if let Ok(key) = keyResult {
-        loop {
-            let flag_argument = unsafe { ap.arg::<c_int>() };
+        if let Ok(key) = keyResult {
+            loop {
+                let flag_argument = unsafe { ap.arg::<c_int>() };
 
-            let flags = KeyNewFlags::from_bits(flag_argument)
-                .expect("Cannot create Flags from va_list args");
+                let flags = KeyNewFlags::from_bits(flag_argument)
+                    .expect("Cannot create Flags from va_list args");
 
-            if flags.contains(KeyNewFlags::KEY_NAME) {
-                println!("KEY_NAME");
-            } else if flag_argument == 0 {
-                println!("KEY_END");
-                break
-            } else {
-                break
+                if flags.contains(KeyNewFlags::KEY_NAME) {
+                    println!("KEY_NAME");
+                } else if flag_argument == 0 {
+                    println!("KEY_END");
+                    break
+                } else {
+                    break
+                }
             }
-        }
 
-        Box::into_raw(
-            Box::new(key.to_ckey())
-        )
-    } else {
-        return ptr::null_mut()
+            return Box::into_raw(
+                Box::new(key.to_ckey())
+            );
+        }
     }
 
-
+    return ptr::null_mut();
 }
 
 #[no_mangle]
@@ -137,17 +136,17 @@ pub extern "C" fn keyNeedSync(key: *const CKey) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn keyIsBelow(key: *mut CKey, check: *mut CKey) -> c_int {
-    let mut thatKey = match Key::from_ckey(key) {
+    let that_key = match Key::from_ckey(key) {
         Ok(x) => x,
         Err(_) => return -1,
     };
 
-    let mut otherKey = match Key::from_ckey(check) {
+    let other_key = match Key::from_ckey(check) {
         Ok(x) => x,
         Err(_) => return -1,
     };
 
-    return match thatKey.cmp(&otherKey) {
+    return match that_key.cmp(&other_key) {
         Ordering::Equal | Ordering::Greater => 0,
         Ordering::Less => 1,
     }
@@ -155,17 +154,17 @@ pub extern "C" fn keyIsBelow(key: *mut CKey, check: *mut CKey) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn keyIsBelowOrSame(key: *mut CKey, check: *mut CKey) -> c_int {
-    let mut thatKey = match Key::from_ckey(key) {
+    let that_key = match Key::from_ckey(key) {
         Ok(x) => x,
         Err(_) => return -1,
     };
 
-    let mut otherKey = match Key::from_ckey(check) {
+    let other_key = match Key::from_ckey(check) {
         Ok(x) => x,
         Err(_) => return -1,
     };
 
-    return match thatKey.cmp(&otherKey) {
+    return match that_key.cmp(&other_key) {
         Ordering::Greater => 0,
         Ordering::Less | Ordering::Equal => 1,
     }
@@ -198,12 +197,14 @@ pub extern "C" fn keySetName(key: *mut CKey, newname: *const c_char) -> ssize_t 
         Err(_) => return -1,
     };
 
-    let mut rustKey = match Key::from_ckey(key) {
-        Ok(x) => x,
-        Err(_) => return -1,
-    };
 
-    if let Ok(_) = rustKey.set_name(newNameStr) {
+    if let Ok(key_name) = KeyName::from_str(newNameStr) {
+        let mut rustKey = match Key::from_ckey(key) {
+            Ok(x) => x,
+            Err(_) => return -1,
+        };
+
+        rustKey.set_name(key_name);
         CKey::overwrite(key, rustKey);
         return keyGetNameSize(key);
     }
@@ -224,12 +225,9 @@ pub extern "C" fn keyAddName(key: *mut CKey, addName: *const c_char) -> ssize_t 
         Err(_) => return -1,
     };
 
-    if let Ok(_) = rustKey.append_name(addNameStr) {
-        CKey::overwrite(key, rustKey);
-        return keyGetNameSize(key);
-    }
-
-    return -1;
+    rustKey.append_name(addNameStr);
+    CKey::overwrite(key, rustKey);
+    return keyGetNameSize(key);
 }
 
 #[no_mangle]
@@ -308,7 +306,7 @@ pub extern "C" fn keyIsLocked(key: *const CKey, what: elektraLockFlags) -> c_int
 
 #[no_mangle]
 pub extern "C" fn ksNew(alloc: size_t) -> *mut CKeySet {
-    let ks = KeySet::new();
+    let ks = KeySet::default();
     &mut ks.to_ckeyset()
 }
 

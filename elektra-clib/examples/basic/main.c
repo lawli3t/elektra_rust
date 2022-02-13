@@ -13,6 +13,7 @@ int main (void) {
     printf("--------------\n");
 
     printf("%i\n", keyIsBelow (key, key2));
+    printf("%i\n", keyIsBelow (key2, key));
 
     printf("--------------\n");
 

@@ -163,9 +163,9 @@ pub struct KeyBuilder {
 }
 
 impl KeyBuilder {
-    pub fn new(namespace: KeyNamespace, path: RelativePathBuf) -> KeyBuilder {
+    pub fn new(key_name: KeyName) -> KeyBuilder {
         KeyBuilder {
-            name: KeyName::new(namespace, path),
+            name: key_name,
             value: None,
         }
     }

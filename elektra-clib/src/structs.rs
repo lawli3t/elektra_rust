@@ -4,6 +4,7 @@
 
 use std::ffi::{CStr, CString};
 use std::ptr;
+use std::str::FromStr;
 use libc::{size_t, c_char, c_int, c_uint};
 
 use bitflags::bitflags;
@@ -194,10 +195,9 @@ impl CKeyEquivalent for Key {
         let cstr = unsafe { CStr::from_ptr((*c_key).key) };
 
         let keyNameStr = cstr.to_str()
-            .expect("key name cannot be cast to string")
-            .to_string();
+            .expect("key name cannot be cast to string");
 
-        KeyBuilder::from_string(keyNameStr)
+        KeyBuilder::from_str(keyNameStr)?
             .build()
     }
 }
