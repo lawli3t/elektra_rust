@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use relative_path::{RelativePath, RelativePathBuf};
 
+#[derive(Copy, Clone)]
 pub enum KeyNamespace {
     None,
     Cascading,
@@ -55,6 +56,10 @@ impl KeyName {
             namespace,
             path
         }
+    }
+
+    pub fn set_namespace(&mut self, namespace: KeyNamespace) {
+        self.namespace = namespace
     }
 }
 
@@ -145,6 +150,18 @@ impl Key {
 
     pub fn append_name(&mut self, name: &str) {
         self.name.path = self.name.path.join(RelativePath::new(name));
+    }
+
+    pub fn namespace(&self) -> KeyNamespace {
+        self.name.namespace
+    }
+
+    pub fn set_namespace(&mut self, namespace: KeyNamespace) {
+        self.name.set_namespace(namespace);
+    }
+
+    pub fn value(&self) -> Option<&KeyValue> {
+        return self.value.as_ref()
     }
 }
 

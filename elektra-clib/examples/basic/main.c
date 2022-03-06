@@ -23,6 +23,11 @@ int main (void) {
     printf("%i\n", keySetName (key, "system:/asd/qwe/asd"));
     printf("%s\n", keyName (key));
 
+    printf("%i\n", keySetBinary(key, "abc", 4));
+
+    printf("%p\n", keyValue (key));
+    printf("%s\n", (char *) keyValue (key));
+
     keyDel (key);
     keyDel (key2);
 

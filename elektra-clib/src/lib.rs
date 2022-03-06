@@ -6,7 +6,7 @@
 
 use std::cmp::Ordering;
 use std::ffi::{CStr, CString, VaList, VaListImpl};
-use std::ptr;
+use std::{ptr, slice};
 use std::str::FromStr;
 use std::convert::TryFrom;
 use libc::{ssize_t, size_t, c_char, c_int, c_void};
@@ -18,7 +18,9 @@ use crate::structs::{
     KeyNewFlags, elektraNamespace, elektraCopyFlags, elektraLockFlags, elektraLookupFlags,
 };
 
-use elektra_rust::key::{Key, KeyBuilder, KeyName, KeySet};
+use crate::elektraNamespace::KEY_NS_NONE;
+
+use elektra_rust::key::{Key, KeyBuilder, KeyName, KeyNamespace, KeySet};
 
 #[no_mangle]
 pub unsafe extern "C" fn keyNew(keyname: *const c_char, args: ...) -> *const CKey {
@@ -243,7 +245,6 @@ pub extern "C" fn keyAddName(key: *mut CKey, addName: *const c_char) -> ssize_t 
     };
 
     let key1 = unsafe { &*key };
-
     let mut rust_key = match Key::try_from(key1) {
         Ok(x) => x,
         Err(_) => return -1,
@@ -276,37 +277,105 @@ pub extern "C" fn keySetBaseName(key: *mut CKey, baseName: *const c_char) -> ssi
 
 #[no_mangle]
 pub extern "C" fn keyAddBaseName(key: *mut CKey, baseName: *const c_char) -> ssize_t {
-    1
+    let cstr = unsafe { CStr::from_ptr(baseName) };
+    let addNameStr = match cstr.to_str() {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let key1 = unsafe { &*key };
+    let mut rust_key = match Key::try_from(key1) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    rust_key.append_name(addNameStr);
+    CKey::overwrite(key, rust_key);
+    return keyGetNameSize(key);
 }
 
 #[no_mangle]
 pub extern "C" fn keyGetNamespace(key: *const CKey) -> elektraNamespace {
-    1
+    if key.is_null() {
+        return elektraNamespace::KEY_NS_NONE;
+    }
+
+    let key1 = unsafe { &*key };
+    let rust_key = match Key::try_from(key1) {
+        Ok(x) => x,
+        Err(_) => return KEY_NS_NONE,
+    };
+
+    elektraNamespace::from(rust_key.namespace())
 }
 
 #[no_mangle]
 pub extern "C" fn keySetNamespace(key: *mut CKey, ns: elektraNamespace) -> ssize_t {
-    1
+    let key1 = unsafe { &*key };
+    let mut rust_key = match Key::try_from(key1) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let namespace = KeyNamespace::from(ns);
+    rust_key.set_namespace(namespace);
+
+    namespace.to_string().len() as ssize_t
 }
 
 #[no_mangle]
 pub extern "C" fn keyValue(key: *const CKey) -> *const c_void {
-    ptr::null_mut()
+    let key1 = unsafe { &*key };
+    let rust_key = match Key::try_from(key1) {
+        Ok(x) => x,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    if let Some(value) = rust_key.value() {
+        println!("{:?}", value);
+        return value.as_ptr() as *const c_void;
+    }
+
+    return ptr::null_mut();
 }
 
 #[no_mangle]
-pub extern "C" fn keyGetValueSize(key: *const CKey) -> ssize_t {
-    1
+pub extern "C" fn keySetBinary(key: *mut CKey, newBinary: *const c_void, size: size_t) -> ssize_t {
+    let key1 = unsafe { &*key };
+    let mut rust_key = match Key::try_from(key1) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let newValue = unsafe {
+        slice::from_raw_parts(newBinary as *const u8, size)
+    };
+
+    rust_key.set_value(newValue.to_vec());
+
+    println!("{:?}", rust_key.value().unwrap());
+
+    size as ssize_t
+}
+
+#[no_mangle]
+pub extern "C" fn keyValueSize(key: *const CKey) -> ssize_t {
+    let key1 = unsafe { &*key };
+    let rust_key = match Key::try_from(key1) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    if let Some(value) = rust_key.value() {
+        return value.len() as ssize_t
+    }
+
+    return 0;
 }
 
 #[no_mangle]
 pub extern "C" fn keyString(key: *const CKey) -> *const c_char {
     CString::new("qq").expect("CString new failed").into_raw()
-}
-
-#[no_mangle]
-pub extern "C" fn keySetString(key: *mut CKey, newString: *const c_char) -> ssize_t {
-    1
 }
 
 #[no_mangle]
