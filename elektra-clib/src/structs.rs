@@ -26,7 +26,6 @@ pub type elektraLockFlags = c_int;
 pub type elektraKeyFlags = c_int;
 pub type elektraKeySetFlags = c_int;
 pub type elektraCopyFlags = c_uint;
-pub type elektraLookupFlags = c_int;
 
 #[repr(C)]
 pub enum elektraNamespace {
@@ -114,8 +113,6 @@ impl CKey {
     pub fn overwrite(key: *mut CKey, rustKey: Key) {
         unsafe {
             let ukeyPtr = (*key).ukey;
-            let dataPtr = (*key).data.c;
-            let dataBinaryPtr = (*key).data.v;
             let keyPtr = (*key).key;
 
             let c_key: CKey = rustKey.into();
@@ -124,18 +121,6 @@ impl CKey {
             drop(
                 CString::from_raw(
                     ukeyPtr
-                )
-            );
-
-            drop(
-                ptr::from_raw(
-                    dataBinaryPtr
-                )
-            );
-
-            drop(
-                CString::from_raw(
-                    dataPtr
                 )
             );
 
@@ -152,18 +137,6 @@ impl CKey {
             drop(
                 CString::from_raw(
                     (*key).ukey
-                )
-            );
-
-            drop(
-                CString::from_raw(
-                    (*key).data.v
-                )
-            );
-
-            drop(
-                CString::from_raw(
-                    (*key).data.c
                 )
             );
 

@@ -58,6 +58,14 @@ impl KeyName {
         }
     }
 
+    pub fn append_name(&mut self, name: &str) {
+        self.path = self.path.join(RelativePath::new(name));
+    }
+
+    pub fn namespace(&self) -> KeyNamespace {
+        self.namespace
+    }
+
     pub fn set_namespace(&mut self, namespace: KeyNamespace) {
         self.namespace = namespace
     }
@@ -136,8 +144,12 @@ impl Key {
         }
     }
 
-    pub fn name(&self) -> String {
-        self.name.to_string()
+    pub fn name(&self) -> &KeyName {
+        &self.name
+    }
+
+    pub fn name_mut(&mut self) -> &mut KeyName {
+        &mut self.name
     }
 
     pub fn set_name(&mut self, name: KeyName) {
@@ -148,17 +160,6 @@ impl Key {
         self.value = Some(value);
     }
 
-    pub fn append_name(&mut self, name: &str) {
-        self.name.path = self.name.path.join(RelativePath::new(name));
-    }
-
-    pub fn namespace(&self) -> KeyNamespace {
-        self.name.namespace
-    }
-
-    pub fn set_namespace(&mut self, namespace: KeyNamespace) {
-        self.name.set_namespace(namespace);
-    }
 
     pub fn value(&self) -> Option<&KeyValue> {
         return self.value.as_ref()
@@ -226,7 +227,7 @@ impl KeySet {
     }
 
     pub fn append_key(&mut self, key: Key) {
-        self.keys.insert(key.name().clone(), key);
+        self.keys.insert(key.name().to_string().clone(), key);
     }
 
     /*

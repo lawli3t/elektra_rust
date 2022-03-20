@@ -1,35 +1,35 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <elektra.h>
+#include <kdb.h>
 
 int main (void) {
-    Key * key = keyNew ("user:/test/qwe/asd", KEY_END);
-    printf("%s\n", keyName (key));
+    ElektraKey * key = elektraKeyNew ("user:/test/qwe/asd");
+    printf("%s\n", elektraKeyName (key));
 
-    Key * key2 = keyNew ("user:/test/qwe/asd/qwe", KEY_END);
-    printf("%s\n", keyName (key2));
-
-    printf("--------------\n");
-
-    printf("%i\n", keyIsBelow (key, key2));
-    printf("%i\n", keyIsBelow (key2, key));
+    ElektraKey * key2 = elektraKeyNew ("user:/test/qwe/asd/qwe");
+    printf("%s\n", elektraKeyName (key2));
 
     printf("--------------\n");
 
-    printf("%i\n", keyAddName (key, "yyyyyyy"));
-    printf("%s\n", keyName (key));
+    printf("%i\n", elektraKeyIsBelow (key, key2));
+    printf("%i\n", elektraKeyIsBelow (key2, key));
 
-    printf("%i\n", keySetName (key, "system:/asd/qwe/asd"));
-    printf("%s\n", keyName (key));
+    printf("--------------\n");
 
-    printf("%i\n", keySetBinary(key, "abc", 4));
+    printf("%i\n", elektraKeyAddName (key, "yyyyyyy"));
+    printf("%s\n", elektraKeyName (key));
 
-    printf("%p\n", keyValue (key));
-    printf("%s\n", (char *) keyValue (key));
+    printf("%i\n", elektraKeySetName (key, "system:/asd/qwe/asd"));
+    printf("%s\n", elektraKeyName (key));
 
-    keyDel (key);
-    keyDel (key2);
+    // printf("%i\n", keySetBinary(key, "abc", 4));
+
+    // printf("%p\n", keyValue (key));
+    // printf("%s\n", (char *) keyValue (key));
+
+    elektraKeyDel (key);
+    elektraKeyDel (key2);
 
     // KeySet * ks = ksNew (1, KS_END);
     // ksAppendKey(ks, key);
