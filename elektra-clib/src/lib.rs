@@ -495,7 +495,6 @@ pub extern "C" fn elektraKeysetSize(ks: *const CKeySet) -> ssize_t {
     todo!()
 }
 
-
 #[no_mangle]
 pub extern "C" fn elektraKeysetAdd(ks: *mut CKeySet, key: *mut CKey) -> ssize_t {
     todo!()

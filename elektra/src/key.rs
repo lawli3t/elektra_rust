@@ -178,7 +178,7 @@ impl Key {
         }
     }
 
-    pub fn value_string(&self) -> Option<String> {
+    pub fn value_to_string(&self) -> Option<String> {
         if let Some(value) = &self.value {
             Some(String::from_utf8_lossy(value).to_string())
         } else {
@@ -243,25 +243,31 @@ pub struct KeySet {
 }
 
 impl KeySet {
-    pub fn size(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.keys.len()
     }
 
-    pub fn append_key(&mut self, key: Key) {
-        self.keys.insert(key.name().to_string().clone(), key);
+    pub fn append(&mut self, key: Key) {
+        self.keys.insert(
+            key.name().to_string(),
+            key
+        );
     }
 
-    /*
-    pub fn append_keys(&mut self, keys: &[Key])
-    {
-        for key in keys {
-            self.append_key(key);
-        }
+    pub fn clear(&mut self) {
+        self.keys.clear()
     }
-    */
 
-    pub fn lookup(&mut self, name: String) -> Option<Key> {
-        self.keys.remove(&name)
+    pub fn remove(&mut self, name: &str) -> Option<Key> {
+        self.keys.remove(name)
+    }
+
+    pub fn lookup_key(&mut self, key: &Key) -> Option<Key> {
+        self.lookup(&key.name.to_string())
+    }
+
+    pub fn lookup(&mut self, name: &str) -> Option<Key> {
+        self.keys.get(name)
     }
 
     pub fn values(&self) -> std::collections::btree_map::Iter<String, Key> {
@@ -282,7 +288,7 @@ impl FromIterator<Key> for KeySet {
         let mut ks = KeySet::default();
 
         for key in iter {
-            ks.append_key(key);
+            ks.append(key);
         }
 
         ks
@@ -334,12 +340,12 @@ mod tests {
         );
 
         assert_eq!(None, key.value());
-        assert_eq!(None, key.value_string());
+        assert_eq!(None, key.value_to_string());
 
         key.set_value_str("asdf");
         assert_eq!(vec![97, 115, 100, 102], key.value().unwrap());
         assert_eq!("asdf".as_bytes(), key.value().unwrap());
-        assert_eq!("asdf", key.value_string().unwrap());
+        assert_eq!("asdf", key.value_to_string().unwrap());
     }
 
     #[test]
@@ -351,6 +357,22 @@ mod tests {
             .unwrap();
 
         assert_eq!(key.name().to_string(), "user:/test/qwe/asd");
-        assert_eq!(key.value_string().unwrap(), "asd");
+        assert_eq!(key.value_to_string().unwrap(), "asd");
+    }
+
+    #[test]
+    fn test_keyset() {
+        let key = Key::new(
+            KeyName::from_str("user:/test/qwe/asd").unwrap()
+        );
+
+        let keyset_content = vec![key];
+
+        let mut keyset = KeySet::from_iter(keyset_content);
+        assert_eq!(1, keyset.len());
+
+        let key_pop = keyset.lookup("user:/test/qwe/asd").unwrap();
+        assert_eq!("user:/test/qwe/asd", key_pop.name.to_string());
+        assert_eq!(0, keyset.len());
     }
 }
