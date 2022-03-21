@@ -182,6 +182,7 @@ pub extern "C" fn elektraKeyIsDirectlyBelow(key: *const CKey, check: *const CKey
     todo!()
 }
 
+/// You have to free the returned string manually, otherwise there will be memory leaks
 #[no_mangle]
 pub extern "C" fn elektraKeyName(key: *const CKey) -> *const c_char {
     let c_key = unsafe { &*key };
@@ -267,6 +268,7 @@ pub extern "C" fn elektraKeyAddName(key: *mut CKey, addName: *const c_char) -> s
     return elektraKeyNameSize(key);
 }
 
+/// You have to free the returned string manually, otherwise there will be memory leaks
 #[no_mangle]
 pub extern "C" fn elektraKeyEscapedName(key: *const CKey) -> *const c_char {
     todo!()
@@ -277,6 +279,7 @@ pub extern "C" fn elektraKeyEscapedNameSize(key: *const CKey) -> ssize_t {
     todo!()
 }
 
+/// You have to free the returned string manually, otherwise there will be memory leaks
 #[no_mangle]
 pub extern "C" fn elektraKeyBaseName(key: *const CKey) -> *mut c_char {
     let c_key = unsafe { &*key };
@@ -390,6 +393,7 @@ pub extern "C" fn elektraKeySetNamespace(key: *mut CKey, ns: elektraNamespace) -
     namespace.to_string().len() as ssize_t
 }
 
+/// You have to free the returned buffer manually, otherwise there will be memory leaks
 #[no_mangle]
 pub extern "C" fn elektraKeyValue(key: *const CKey) -> *const c_void {
     let c_key = unsafe { &*key };
