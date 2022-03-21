@@ -262,11 +262,11 @@ impl KeySet {
         self.keys.remove(name)
     }
 
-    pub fn lookup_key(&mut self, key: &Key) -> Option<Key> {
+    pub fn lookup_key(&mut self, key: &Key) -> Option<&Key> {
         self.lookup(&key.name.to_string())
     }
 
-    pub fn lookup(&mut self, name: &str) -> Option<Key> {
+    pub fn lookup(&mut self, name: &str) -> Option<&Key> {
         self.keys.get(name)
     }
 
@@ -371,8 +371,12 @@ mod tests {
         let mut keyset = KeySet::from_iter(keyset_content);
         assert_eq!(1, keyset.len());
 
-        let key_pop = keyset.lookup("user:/test/qwe/asd").unwrap();
-        assert_eq!("user:/test/qwe/asd", key_pop.name.to_string());
+        let key_lookup = keyset.lookup("user:/test/qwe/asd").unwrap();
+        assert_eq!("user:/test/qwe/asd", key_lookup.name.to_string());
+        assert_eq!(1, keyset.len());
+
+        let key_removed = keyset.remove("user:/test/qwe/asd").unwrap();
+        assert_eq!("user:/test/qwe/asd", key_removed.name.to_string());
         assert_eq!(0, keyset.len());
     }
 }

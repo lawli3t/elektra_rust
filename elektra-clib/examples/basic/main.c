@@ -40,18 +40,18 @@ int main (void) {
 
     const char * value = elektraKeyValue (key);
     printf("%p\n", value);
+
     printf("%i\n", elektraKeySetValue(key, "abc", 4));
-
     value = elektraKeyValue (key);
     printf("%p\n", value);
     printf("%s\n", value);
 
-    printf("%i\n", elektraKeyBaseNameSize (key));
-
+    printf("%i\n", elektraKeySetValue(key, "abcd", 4));
     value = elektraKeyValue (key);
     printf("%p\n", value);
     printf("%s\n", value);
 
+    free(value);
     elektraKeyDel (key);
     elektraKeyDel (key2);
 
