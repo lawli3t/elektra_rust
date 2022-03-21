@@ -118,11 +118,9 @@ pub enum KeyError {
     NullPointerError,
 }
 
-pub type KeyValue = Vec<u8>;
-
 pub struct Key {
     name: KeyName,
-    value: Option<KeyValue>
+    value: Option<Vec<u8>>
 }
 
 impl Eq for Key {}
@@ -165,16 +163,19 @@ impl Key {
         self.name = name;
     }
 
-    pub fn set_value(&mut self, value: KeyValue) {
-        self.value = Some(value);
+    pub fn set_value(&mut self, value: &[u8]) {
+        self.value = Some(value.to_vec());
     }
 
     pub fn set_value_str(&mut self, value: &str) {
         self.value = Some(value.as_bytes().to_vec())
     }
 
-    pub fn value(&self) -> Option<&KeyValue> {
-        return self.value.as_ref()
+    pub fn value(&self) -> Option<&[u8]> {
+        match &self.value {
+            Some(value) => Some(value.as_slice()),
+            None => None,
+        }
     }
 
     pub fn value_string(&self) -> Option<String> {
@@ -197,7 +198,7 @@ impl FromStr for Key {
 
 pub struct KeyBuilder {
     name: KeyName,
-    value: Option<KeyValue>
+    value: Option<Vec<u8>>
 }
 
 impl KeyBuilder {
@@ -208,8 +209,8 @@ impl KeyBuilder {
         }
     }
 
-    pub fn value(mut self, value: KeyValue) -> KeyBuilder {
-        self.value = Some(value);
+    pub fn value(mut self, value: &[u8]) -> KeyBuilder {
+        self.value = Some(value.to_vec());
         self
     }
 
@@ -217,7 +218,7 @@ impl KeyBuilder {
         let mut key = Key::new(self.name);
 
         if let Some(value) = self.value {
-            key.set_value(value);
+            key.set_value(&value);
         }
 
         Ok(key)
@@ -336,8 +337,8 @@ mod tests {
         assert_eq!(None, key.value_string());
 
         key.set_value_str("asdf");
-        assert_eq!(vec![97, 115, 100, 102], *key.value().unwrap());
-        assert_eq!("asdf".as_bytes().to_vec(), *key.value().unwrap());
+        assert_eq!(vec![97, 115, 100, 102], key.value().unwrap());
+        assert_eq!("asdf".as_bytes(), key.value().unwrap());
         assert_eq!("asdf", key.value_string().unwrap());
     }
 
@@ -345,7 +346,7 @@ mod tests {
     fn test_key_builder() {
         let key = KeyBuilder::from_str("user:/test/qwe/asd")
             .unwrap()
-            .value("asd".as_bytes().to_vec())
+            .value("asd".as_bytes())
             .build()
             .unwrap();
 

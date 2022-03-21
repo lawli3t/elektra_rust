@@ -164,22 +164,23 @@ impl Into<CKey> for Key {
 
         let data = match self.value() {
             None => {
-                println!("NONE");
                 ptr::null_mut()
             }
             Some(value) => {
-                let mut buf = value.clone().into_boxed_slice();
+                let mut buf = value
+                    .to_vec()
+                    .into_boxed_slice();
 
-                let data = buf.as_mut_ptr();
+                let ptr = buf.as_mut_ptr();
                 std::mem::forget(buf);
 
-                data as *mut c_void
+                ptr as *mut c_void
             }
         };
 
         let dataSize = match self.value() {
             None => { 0 }
-            Some(value) => { value.clone().into_boxed_slice().len() }
+            Some(value) => { value.len() }
         };
 
         CKey {
@@ -212,7 +213,7 @@ impl TryFrom<&CKey> for Key {
                 slice::from_raw_parts_mut(value.data as *mut u8, value.dataSize)
             };
 
-            builder = builder.value(newValue.to_vec());
+            builder = builder.value(newValue);
         }
 
         builder.build()

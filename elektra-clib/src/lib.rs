@@ -399,12 +399,14 @@ pub extern "C" fn elektraKeyValue(key: *const CKey) -> *const c_void {
     };
 
     if let Some(value) = rust_key.value() {
-        let mut buf = value.clone().into_boxed_slice();
+        let mut buf = value
+            .to_vec()
+            .into_boxed_slice();
 
-        let data = buf.as_mut_ptr();
+        let ptr = buf.as_mut_ptr();
         std::mem::forget(buf);
 
-        return data as *mut c_void;
+        return ptr as *const c_void;
     }
 
     return ptr::null_mut();
@@ -437,9 +439,7 @@ pub extern "C" fn elektraKeySetValue(key: *mut CKey, value: *const c_void, value
         slice::from_raw_parts(value as *const u8, valueSize)
     };
 
-    rust_key.set_value(newValue.to_vec());
-
-    let value = rust_key.value().unwrap();
+    rust_key.set_value(newValue);
 
     CKey::overwrite(key, rust_key);
     valueSize as ssize_t
