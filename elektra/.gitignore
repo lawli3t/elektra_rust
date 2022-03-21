@@ -1,3 +1,4 @@
 /target
+tarpaulin-report.html
 elektra/Cargo.lock
 .idea

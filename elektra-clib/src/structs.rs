@@ -29,15 +29,15 @@ pub type elektraCopyFlags = c_uint;
 
 #[repr(C)]
 pub enum elektraNamespace {
-    KEY_NS_NONE=0,
-    KEY_NS_CASCADING=1,
-    KEY_NS_META=2,
-    KEY_NS_SPEC=3,
-    KEY_NS_PROC=4,
-    KEY_NS_DIR=5,
-    KEY_NS_USER=6,
-    KEY_NS_SYSTEM=7,
-    KEY_NS_DEFAULT=8
+    KEY_NS_NONE = 0,
+    KEY_NS_CASCADING = 1,
+    KEY_NS_META = 2,
+    KEY_NS_SPEC = 3,
+    KEY_NS_PROC = 4,
+    KEY_NS_DIR = 5,
+    KEY_NS_USER = 6,
+    KEY_NS_SYSTEM = 7,
+    KEY_NS_DEFAULT = 8,
 }
 
 impl From<KeyNamespace> for elektraNamespace {
@@ -73,14 +73,8 @@ impl From<elektraNamespace> for KeyNamespace {
 }
 
 #[repr(C)]
-pub union CDataUnion {
-    pub c: *mut c_char,
-    pub v: *mut libc::c_void,
-}
-
-#[repr(C)]
 pub struct CKey {
-    pub data: CDataUnion,
+    pub data: *mut c_void,
     pub dataSize: size_t,
 
     pub key: *mut c_char,
@@ -96,24 +90,11 @@ pub struct CKey {
 }
 
 impl CKey {
-    pub fn default() -> CKey {
-        CKey {
-            data: CDataUnion { c: CString::new("qq").expect("qq").into_raw() },
-            dataSize: 0,
-            key: CString::new("qq").expect("qq").into_raw(),
-            keySize: 0,
-            ukey: CString::new("qq").expect("qq").into_raw(),
-            keyUSize: 0,
-            ksReference: 0,
-            flags: 0,
-            meta: &mut CKeySet::default(),
-        }
-    }
-
     pub fn overwrite(key: *mut CKey, rustKey: Key) {
         unsafe {
             let ukeyPtr = (*key).ukey;
             let keyPtr = (*key).key;
+            let dataPtr = (*key).data;
 
             let c_key: CKey = rustKey.into();
             std::ptr::write(key, c_key);
@@ -129,7 +110,13 @@ impl CKey {
                     keyPtr
                 )
             );
-        };
+
+            drop(
+                Box::from_raw(
+                    dataPtr
+                )
+            );
+        }
     }
 
     pub fn destroy_fields(key: *mut CKey) {
@@ -143,6 +130,12 @@ impl CKey {
             drop(
                 CString::from_raw(
                     (*key).key
+                )
+            );
+
+            drop(
+                Box::from_raw(
+                    (*key).data
                 )
             );
         }
@@ -159,23 +152,43 @@ impl CKey {
 
 impl Into<CKey> for Key {
     fn into(self) -> CKey {
-        let name = CString::new(self.name().to_string().clone())
-            .expect("qq")
-            .into_raw();
+        let key = CString::new(self.name().to_string())
+            .expect("test");
 
-        let mut data = vec![97, 98, 99, 0];
+        let keySize = key.as_bytes_with_nul().len();
 
-        let uKey = CString::new("qq")
-            .expect("qq")
-            .into_raw();
+        let uKey = CString::new("test")
+            .expect("test");
+
+        let keyUSize = uKey.as_bytes_with_nul().len();
+
+        let data = match self.value() {
+            None => {
+                println!("NONE");
+                ptr::null_mut()
+            }
+            Some(value) => {
+                let mut buf = value.clone().into_boxed_slice();
+
+                let data = buf.as_mut_ptr();
+                std::mem::forget(buf);
+
+                data as *mut c_void
+            }
+        };
+
+        let dataSize = match self.value() {
+            None => { 0 }
+            Some(value) => { value.clone().into_boxed_slice().len() }
+        };
 
         CKey {
-            data: CDataUnion { v: data.as_mut_ptr() as *mut c_void },
-            dataSize: 0,
-            key: name,
-            keySize: 0,
-            ukey: uKey,
-            keyUSize: 0,
+            data,
+            dataSize,
+            key: key.into_raw(),
+            keySize,
+            ukey: uKey.into_raw(),
+            keyUSize,
             ksReference: 0,
             flags: 0,
             meta: &mut CKeySet::default(),
@@ -192,13 +205,17 @@ impl TryFrom<&CKey> for Key {
         let key_name_cstr = cstr.to_str()
             .expect("key name cannot be cast to string");
 
-        let newValue = unsafe {
-            slice::from_raw_parts(value.data.v as *const u8, value.dataSize)
-        };
+        let mut builder = KeyBuilder::from_str(key_name_cstr)?;
 
-        KeyBuilder::from_str(key_name_cstr)?
-            .value(newValue.to_vec())
-            .build()
+        if !value.data.is_null() {
+            let newValue = unsafe {
+                slice::from_raw_parts_mut(value.data as *mut u8, value.dataSize)
+            };
+
+            builder = builder.value(newValue.to_vec());
+        }
+
+        builder.build()
     }
 }
 

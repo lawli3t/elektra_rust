@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use relative_path::{RelativePath, RelativePathBuf};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum KeyNamespace {
     None,
     Cascading,
@@ -37,6 +37,7 @@ impl FromStr for KeyNamespace {
 impl ToString for KeyNamespace {
     fn to_string(&self) -> String {
         let namespace = match self {
+            KeyNamespace::Meta => "meta",
             KeyNamespace::User => "user",
             _ => "test",
         };
@@ -56,6 +57,14 @@ impl KeyName {
             namespace,
             path
         }
+    }
+
+    pub fn base_name(&self) -> Option<&str> {
+        self.path.file_name()
+    }
+
+    pub fn set_base_name(&mut self, base_name: &str) {
+        self.path.set_file_name(base_name);
     }
 
     pub fn append_name(&mut self, name: &str) {
@@ -86,10 +95,10 @@ impl FromStr for KeyName {
         let key_namespace = KeyNamespace::from_str(namespace)
             .or(Err(KeyError::InvalidNameError))?;
 
-        Ok(KeyName {
-                namespace: key_namespace,
-                path: RelativePathBuf::from(path).normalize(),
-        })
+        Ok(KeyName::new(
+            key_namespace,
+            RelativePathBuf::from(path).normalize(),
+        ))
     }
 }
 
@@ -109,7 +118,7 @@ pub enum KeyError {
     NullPointerError,
 }
 
-type KeyValue = Vec<u8>;
+pub type KeyValue = Vec<u8>;
 
 pub struct Key {
     name: KeyName,
@@ -160,9 +169,20 @@ impl Key {
         self.value = Some(value);
     }
 
+    pub fn set_value_str(&mut self, value: &str) {
+        self.value = Some(value.as_bytes().to_vec())
+    }
 
     pub fn value(&self) -> Option<&KeyValue> {
         return self.value.as_ref()
+    }
+
+    pub fn value_string(&self) -> Option<String> {
+        if let Some(value) = &self.value {
+            Some(String::from_utf8_lossy(value).to_string())
+        } else {
+            None
+        }
     }
 }
 
@@ -278,17 +298,58 @@ mod tests {
             KeyName::from_str("user:/test/qwe/asd").unwrap()
         );
 
-        assert_eq!(key.name(), "user:/test/qwe/asd")
+        assert_eq!(key.name().to_string(), "user:/test/qwe/asd");
+    }
+
+    #[test]
+    fn test_key_name() {
+        let mut key_name = KeyName::from_str("user:/test/qwe/asd").unwrap();
+        assert_eq!(key_name.to_string(), "user:/test/qwe/asd");
+        assert_eq!(key_name.base_name().unwrap(), "asd");
+        assert_eq!(key_name.namespace(), KeyNamespace::User);
+
+        key_name.append_name("qweqweqwe");
+        assert_eq!(key_name.to_string(), "user:/test/qwe/asd/qweqweqwe");
+        assert_eq!(key_name.base_name().unwrap(), "qweqweqwe");
+        assert_eq!(key_name.namespace(), KeyNamespace::User);
+
+        key_name.set_base_name("zxc");
+        assert_eq!(key_name.to_string(), "user:/test/qwe/asd/zxc");
+        assert_eq!(key_name.base_name().unwrap(), "zxc");
+
+        key_name.set_namespace(KeyNamespace::Meta);
+        assert_eq!(key_name.to_string(), "meta:/test/qwe/asd/zxc");
+        assert_eq!(key_name.namespace(), KeyNamespace::Meta);
+
+        key_name.set_namespace(KeyNamespace::User);
+        assert_eq!(key_name.to_string(), "user:/test/qwe/asd/zxc");
+        assert_eq!(key_name.namespace(), KeyNamespace::User);
+    }
+
+    #[test]
+    fn test_key_value() {
+        let mut key = Key::new(
+            KeyName::from_str("user:/test").unwrap()
+        );
+
+        assert_eq!(None, key.value());
+        assert_eq!(None, key.value_string());
+
+        key.set_value_str("asdf");
+        assert_eq!(vec![97, 115, 100, 102], *key.value().unwrap());
+        assert_eq!("asdf".as_bytes().to_vec(), *key.value().unwrap());
+        assert_eq!("asdf", key.value_string().unwrap());
     }
 
     #[test]
     fn test_key_builder() {
         let key = KeyBuilder::from_str("user:/test/qwe/asd")
             .unwrap()
-            .value([1, 2, 3].to_vec())
+            .value("asd".as_bytes().to_vec())
             .build()
             .unwrap();
 
-        assert_eq!(key.name(), "user:/test/qwe/asd");
+        assert_eq!(key.name().to_string(), "user:/test/qwe/asd");
+        assert_eq!(key.value_string().unwrap(), "asd");
     }
 }

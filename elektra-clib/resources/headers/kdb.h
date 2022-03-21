@@ -43,7 +43,6 @@ static const elektraNamespace ELEKTRA_NS_LAST = ELEKTRA_NS_DEFAULT;
 
 typedef ssize_t elektraCursor;
 
-
 typedef struct _KDB	ElektraKDB;
 typedef struct _Key	ElektraKey;
 typedef struct _KeySet	ElektraKeySet;

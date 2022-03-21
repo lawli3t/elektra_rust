@@ -19,14 +19,38 @@ int main (void) {
 
     printf("%i\n", elektraKeyAddName (key, "yyyyyyy"));
     printf("%s\n", elektraKeyName (key));
+    printf("%s\n", elektraKeyBaseName (key));
+    printf("%i\n", elektraKeyBaseNameSize (key));
 
-    printf("%i\n", elektraKeySetName (key, "system:/asd/qwe/asd"));
+    printf("--------------\n");
+
+    printf("%i\n", elektraKeySetName (key, "user:/asd/qwe/asd"));
     printf("%s\n", elektraKeyName (key));
+    printf("%s\n", elektraKeyBaseName (key));
+    printf("%i\n", elektraKeyBaseNameSize (key));
 
-    // printf("%i\n", keySetBinary(key, "abc", 4));
+    printf("--------------\n");
 
-    // printf("%p\n", keyValue (key));
-    // printf("%s\n", (char *) keyValue (key));
+    printf("%i\n", elektraKeySetBaseName (key, ""));
+    printf("%s\n", elektraKeyName (key));
+    printf("%s\n", elektraKeyBaseName (key));
+    printf("%i\n", elektraKeyBaseNameSize (key));
+
+    printf("--------------\n");
+
+    const char * value = elektraKeyValue (key);
+    printf("%p\n", value);
+    printf("%i\n", elektraKeySetValue(key, "abc", 4));
+
+    value = elektraKeyValue (key);
+    printf("%p\n", value);
+    printf("%s\n", value);
+
+    printf("%i\n", elektraKeyBaseNameSize (key));
+
+    value = elektraKeyValue (key);
+    printf("%p\n", value);
+    printf("%s\n", value);
 
     elektraKeyDel (key);
     elektraKeyDel (key2);
