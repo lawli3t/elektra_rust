@@ -1,11 +1,13 @@
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::convert::TryInto;
+use indexmap::{IndexSet};
 use std::iter::FromIterator;
 use std::str::FromStr;
+use std::hash::{Hash, Hasher};
 
 use relative_path::{RelativePath, RelativePathBuf};
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Hash)]
 pub enum KeyNamespace {
     None,
     Cascading,
@@ -46,6 +48,7 @@ impl ToString for KeyNamespace {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct KeyName {
     namespace: KeyNamespace,
     pub path: RelativePathBuf,
@@ -118,6 +121,7 @@ pub enum KeyError {
     NullPointerError,
 }
 
+#[derive(Debug, Clone)]
 pub struct Key {
     name: KeyName,
     value: Option<Vec<u8>>
@@ -143,6 +147,12 @@ impl Ord for Key {
     }
 }
 
+impl Hash for Key {
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        self.name.to_string().hash(state)
+    }
+}
+
 impl Key {
     pub fn new(key_name: KeyName) -> Key {
         Key {
@@ -159,7 +169,16 @@ impl Key {
         &mut self.name
     }
 
-    pub fn set_name(&mut self, name: KeyName) {
+    pub fn set_name(&mut self, name: &str) -> Result<(), KeyError> {
+        if let Ok(name) = KeyName::from_str(name) {
+            self.name = name;
+            Ok(())
+        } else {
+            Err(KeyError::InvalidNameError)
+        }
+    }
+
+    pub fn set_keyname(&mut self, name: KeyName) {
         self.name = name;
     }
 
@@ -239,7 +258,8 @@ impl FromStr for KeyBuilder {
 }
 
 pub struct KeySet {
-    keys: BTreeMap<String, Key>
+    keys: IndexSet<Key>,
+    refs: u16,
 }
 
 impl KeySet {
@@ -248,37 +268,77 @@ impl KeySet {
     }
 
     pub fn append(&mut self, key: Key) {
-        self.keys.insert(
-            key.name().to_string(),
-            key
-        );
+        self.keys.insert(key);
     }
 
     pub fn clear(&mut self) {
         self.keys.clear()
     }
 
-    pub fn remove(&mut self, name: &str) -> Option<Key> {
-        self.keys.remove(name)
+    pub fn take(&mut self, name: &str) -> Option<Key> {
+        return match Key::from_str(name) {
+            Ok(x) => self.keys.take(&x),
+            Err(_) => None
+        };
     }
 
-    pub fn lookup_key(&mut self, key: &Key) -> Option<&Key> {
-        self.lookup(&key.name.to_string())
+    pub fn lookup_key(&self, key: &Key) -> Option<&Key> {
+        self.keys.get(key)
     }
 
-    pub fn lookup(&mut self, name: &str) -> Option<&Key> {
-        self.keys.get(name)
+    pub fn lookup(&self, name: &str) -> Option<&Key> {
+        if let Ok(key) = Key::from_str(name) {
+            return self.lookup_key(&key);
+        }
+
+        None
     }
 
-    pub fn values(&self) -> std::collections::btree_map::Iter<String, Key> {
+    pub fn get(&self, index: isize) -> Option<&Key> {
+        self.keys.get_index(index.try_into().unwrap())
+    }
+
+    pub fn remove(&mut self, index: isize) -> Option<Key> {
+        self.keys.shift_remove_index(index.try_into().unwrap())
+    }
+
+    pub fn values(&self) -> indexmap::set::Iter<Key> {
         self.keys.iter()
+    }
+
+    pub fn reference_counter(&self) -> u16 {
+        self.refs
+    }
+
+    pub fn increase_reference_counter(&mut self) -> u16 {
+        if self.refs == u16::MAX {
+            return self.refs;
+        }
+
+        self.refs = self.refs + 1;
+        self.refs
+    }
+
+    pub fn decrease_reference_counter(&mut self) -> u16 {
+        if self.refs == 0 {
+            return self.refs;
+        }
+
+        self.refs = self.refs - 1;
+        self.refs
+    }
+
+    pub fn set_reference_counter(&mut self, n: u16) -> u16 {
+        self.refs = n;
+        self.refs
     }
 }
 
 impl Default for KeySet {
     fn default() -> KeySet {
         KeySet {
-            keys: BTreeMap::new()
+            keys: IndexSet::new(),
+            refs: 0,
         }
     }
 }
@@ -301,11 +361,47 @@ mod tests {
 
     #[test]
     fn test_key() {
-        let key = Key::new(
+        let mut key = Key::new(
             KeyName::from_str("user:/test/qwe/asd").unwrap()
         );
 
         assert_eq!(key.name().to_string(), "user:/test/qwe/asd");
+
+        key.name_mut().set_base_name("zxc");
+        assert_eq!(key.name().to_string(), "user:/test/qwe/zxc");
+
+        key.set_name("user:/asd").expect("should succeed");
+        assert_eq!(key.name().to_string(), "user:/asd");
+
+        let mut key_name = KeyName::from_str("user:/test/qwe/asd").unwrap();
+        key.set_keyname(key_name);
+        assert_eq!(key.name().to_string(), "user:/test/qwe/asd");
+    }
+
+
+    #[test]
+    fn test_key_ord() {
+        let key1 = Key::new(
+            KeyName::from_str("user:/test/qwe/asd").unwrap()
+        );
+
+        let key2 = Key::new(
+            KeyName::from_str("user:/test/qwe/asd/zxc").unwrap()
+        );
+
+        let key3 = Key::new(
+            KeyName::from_str("user:/test/qwe/asd/zxc").unwrap()
+        );
+
+        assert!(key1 == key1);
+        assert!(key2 == key2);
+        assert!(key2 == key3);
+
+        assert!(key1 < key2);
+        assert!(key2 > key1);
+
+        assert!(key1 <= key2);
+        assert!(key2 >= key1);
     }
 
     #[test]
@@ -358,6 +454,16 @@ mod tests {
 
         assert_eq!(key.name().to_string(), "user:/test/qwe/asd");
         assert_eq!(key.value_to_string().unwrap(), "asd");
+
+        let mut key_name = KeyName::from_str("user:/test/qwe/zxc").unwrap();
+        let key = KeyBuilder::new(key_name)
+            .value("qwe".as_bytes())
+            .build()
+            .unwrap();
+
+        assert_eq!(key.name().to_string(), "user:/test/qwe/zxc");
+        assert_eq!(key.value_to_string().unwrap(), "qwe");
+
     }
 
     #[test]
@@ -371,12 +477,53 @@ mod tests {
         let mut keyset = KeySet::from_iter(keyset_content);
         assert_eq!(1, keyset.len());
 
+        let key_lookup = keyset.get(0).unwrap();
+        assert_eq!("user:/test/qwe/asd", key_lookup.name.to_string());
+        assert_eq!(1, keyset.len());
+
         let key_lookup = keyset.lookup("user:/test/qwe/asd").unwrap();
         assert_eq!("user:/test/qwe/asd", key_lookup.name.to_string());
         assert_eq!(1, keyset.len());
 
-        let key_removed = keyset.remove("user:/test/qwe/asd").unwrap();
+        let key_removed = keyset.take("user:/test/qwe/asd").unwrap();
         assert_eq!("user:/test/qwe/asd", key_removed.name.to_string());
         assert_eq!(0, keyset.len());
+
+        let key = Key::new(
+            KeyName::from_str("user:/test/qwe/asd").unwrap()
+        );
+
+        let keyset_content = vec![key];
+        let mut keyset = KeySet::from_iter(keyset_content);
+        assert_eq!(1, keyset.len());
+
+        keyset.clear();
+        assert_eq!(0, keyset.len());
+    }
+
+    #[test]
+    fn test_keyset_reference_counter() {
+        let mut keyset = KeySet::default();
+
+        assert_eq!(0, keyset.reference_counter());
+
+        assert_eq!(0, keyset.decrease_reference_counter());
+        assert_eq!(0, keyset.reference_counter());
+
+        assert_eq!(1, keyset.increase_reference_counter());
+        assert_eq!(1, keyset.reference_counter());
+
+        assert_eq!(2, keyset.increase_reference_counter());
+        assert_eq!(2, keyset.reference_counter());
+
+        assert_eq!(1, keyset.decrease_reference_counter());
+        assert_eq!(1, keyset.reference_counter());
+
+        assert_eq!(0, keyset.decrease_reference_counter());
+        assert_eq!(0, keyset.reference_counter());
+
+        assert_eq!(u16::MAX, keyset.set_reference_counter(u16::MAX));
+        assert_eq!(u16::MAX, keyset.increase_reference_counter());
+        assert_eq!(u16::MAX - 1, keyset.decrease_reference_counter());
     }
 }

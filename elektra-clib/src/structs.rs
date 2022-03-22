@@ -5,12 +5,14 @@
 use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
 use std::{ptr, slice};
+use std::iter::FromIterator;
 use std::str::FromStr;
 use libc::{size_t, c_char, c_int, c_uint, c_void};
 
 use bitflags::bitflags;
 
 use elektra_rust::key::{Key, KeyBuilder, KeyError, KeyNamespace, KeySet};
+use elektra_rust::key::KeyError::InvalidNameError;
 use crate::elektraNamespace::{KEY_NS_CASCADING, KEY_NS_DEFAULT, KEY_NS_DIR, KEY_NS_META, KEY_NS_PROC, KEY_NS_SPEC, KEY_NS_SYSTEM, KEY_NS_USER};
 use crate::KEY_NS_NONE;
 
@@ -237,8 +239,8 @@ pub struct CKeySet
     pub reserved: u16,
 }
 
-impl CKeySet {
-    pub fn default() -> CKeySet {
+impl Default for CKeySet {
+    fn default() -> Self {
         CKeySet {
             array: ptr::null_mut(),
             size: 0,
@@ -252,9 +254,85 @@ impl CKeySet {
     }
 }
 
+impl CKeySet {
+    pub fn overwrite(ks: *mut CKeySet, rust_keyset: KeySet) {
+        unsafe {
+            let arrayPtr = (*ks).array;
+            let cursorPtr = (*ks).cursor;
+
+            let c_keyset: CKeySet = rust_keyset.into();
+            std::ptr::write(ks, c_keyset);
+
+            drop(
+                Box::from_raw(
+                    arrayPtr
+                )
+            );
+
+            drop(
+                Box::from_raw(
+                    cursorPtr
+                )
+            );
+        }
+    }
+
+    pub fn destroy_fields(ks: *mut CKeySet) {
+        unsafe {
+            drop(
+                Box::from_raw(
+                    (*ks).array
+                )
+            );
+
+            drop(
+                Box::from_raw(
+                    (*ks).cursor
+                )
+            );
+        }
+    }
+
+    pub fn destroy(ks: *mut CKeySet) {
+        unsafe {
+            // TODO might need to swap so no accesses to free'd memory is possible
+            Self::destroy_fields(ks);
+            Box::from_raw(ks);
+        };
+    }
+}
+
 impl Into<CKeySet> for KeySet {
     fn into(self) -> CKeySet {
-        todo!()
+        let mut key_array = self.values()
+            .cloned()
+            .map(|key| {
+                let c_key = key.into();
+
+                Box::into_raw(
+                    Box::new(c_key)
+                ) as *const CKey
+            })
+            .collect::<Vec<*const CKey>>()
+            .into_boxed_slice();
+
+        let size = key_array.len();
+
+        let array_ptr = key_array.as_mut_ptr();
+        std::mem::forget(key_array);
+
+        let refs = self.reference_counter();
+
+        CKeySet {
+            array: array_ptr,
+            size,
+            alloc: 0,
+            cursor: ptr::null_mut(),
+            current: 0,
+            flags: 0,
+            refs,
+            reserved: 0
+        }
     }
 }
 
@@ -262,6 +340,26 @@ impl TryFrom<&CKeySet> for KeySet {
     type Error = KeyError;
 
     fn try_from(value: &CKeySet) -> Result<Self, Self::Error> {
-        todo!()
+        if value.array.is_null() {
+            return Err(InvalidNameError);
+        }
+
+        let key_array = unsafe {
+            slice::from_raw_parts_mut(value.array, value.size)
+        };
+
+        let mut keyset = KeySet::from_iter(
+            key_array
+                .iter()
+                .map(|key| {
+                    unsafe {
+                        Key::try_from(&**key).unwrap()
+                    }
+                })
+        );
+
+        keyset.set_reference_counter(value.refs);
+
+        Ok(keyset)
     }
 }

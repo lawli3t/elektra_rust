@@ -9,3 +9,4 @@ name = "elektra_rust"
 
 [dependencies]
 relative-path = "1.6.0"
+indexmap = "1.8.0"

@@ -461,71 +461,244 @@ pub extern "C" fn elektraKeyIsLocked(key: *const CKey, what: elektraLockFlags) -
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetNew(alloc: size_t) -> *mut CKeySet {
-    let ks = KeySet::default();
-    &mut ks.into()
+    let mut ks = KeySet::default();
+
+    let key = KeyBuilder::from_str("test:/qwe/asd")
+        .expect("test")
+        .build()
+        .expect("test");
+
+    let key1 = KeyBuilder::from_str("test:/qwe/asd/zxc")
+        .expect("test")
+        .build()
+        .expect("test");
+
+    ks.append(key);
+    ks.append(key1);
+
+    Box::into_raw(
+        Box::new(ks.into())
+    )
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetIncRef(ks: *mut CKeySet) -> u16 {
-    todo!()
+    let c_keyset = unsafe { &*ks };
+    let mut rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return 0,
+    };
+
+    let reference_count = rust_keyset.increase_reference_counter();
+
+    CKeySet::overwrite(ks, rust_keyset);
+
+    reference_count
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetDecRef(ks: *mut CKeySet) -> u16 {
-    todo!()
+    let c_keyset = unsafe { &*ks };
+    let mut rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return 0,
+    };
+
+    let reference_count = rust_keyset.decrease_reference_counter();
+
+    CKeySet::overwrite(ks, rust_keyset);
+
+    reference_count
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetGetRef(ks: *const CKeySet) -> u16 {
-    todo!()
+    let c_keyset = unsafe { &*ks };
+    let rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return 0,
+    };
+
+    rust_keyset.reference_counter()
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetClear(ks: *mut CKeySet) -> c_int {
-    todo!()
+    let c_keyset = unsafe { &*ks };
+    let mut rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    rust_keyset.clear();
+
+    CKeySet::overwrite(ks, rust_keyset);
+
+    0
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetDel(ks: *mut CKeySet) -> c_int {
+    let c_keyset = unsafe { &*ks };
+    let rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+    CKeySet::overwrite(ks, rust_keyset);
     todo!()
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetSize(ks: *const CKeySet) -> ssize_t {
-    todo!()
+    let c_keyset = unsafe { &*ks };
+    let rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    rust_keyset.len() as ssize_t
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetAdd(ks: *mut CKeySet, key: *mut CKey) -> ssize_t {
-    todo!()
+    let c_keyset = unsafe { &*ks };
+    let mut rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let c_key = unsafe { &*key };
+    let rust_key = match Key::try_from(c_key) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    rust_keyset.append(rust_key);
+    let length = rust_keyset.len();
+
+    CKeySet::overwrite(ks, rust_keyset);
+
+    length as ssize_t
 }
 
 #[no_mangle]
-pub extern "C" fn elektraKeysetGet(ks: *const CKeySet) -> *mut CKey {
-    todo!()
+pub extern "C" fn elektraKeysetGet(ks: *const CKeySet, index: ssize_t) -> *mut CKey {
+    let c_keyset = unsafe { &*ks };
+    let rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    if let Some(key) = rust_keyset.get(index) {
+        let c_key = key.clone().into();
+
+        Box::into_raw(
+            Box::new(c_key)
+        )
+    } else {
+        ptr::null_mut()
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn elektraKeysetRemove(ks: *const CKeySet) -> *mut CKey {
-    todo!()
+pub extern "C" fn elektraKeysetRemove(ks: *mut CKeySet, index: ssize_t) -> *mut CKey {
+    let c_keyset = unsafe { &*ks };
+    let mut rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    if let Some(key) = rust_keyset.remove(index) {
+        CKeySet::overwrite(ks, rust_keyset);
+
+        let c_key = key.clone().into();
+
+        Box::into_raw(
+            Box::new(c_key)
+        )
+    } else {
+        ptr::null_mut()
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetAddAll(ks: *mut CKeySet, other: *const CKeySet) -> ssize_t {
+    /*
+    let c_keyset = unsafe { &*ks };
+    let rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let c_keyset_other = unsafe { &*other };
+    let rust_keyset_other = match KeySet::try_from(c_keyset_other) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    CKeySet::overwrite(ks, rust_keyset);
+    */
     todo!()
 }
 
 #[no_mangle]
-pub extern "C" fn elektraKeysetLookup(ks: *mut CKeySet, k: *mut CKey) -> *mut CKey {
-    todo!()
+pub extern "C" fn elektraKeysetLookup(ks: *const CKeySet, key: *mut CKey) -> *mut CKey {
+    let c_keyset = unsafe { &*ks };
+    let rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let c_key = unsafe { &*key };
+    let rust_key = match Key::try_from(c_key) {
+        Ok(x) => x,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    if let Some(key) = rust_keyset.lookup_key(&rust_key) {
+        let c_key = key.clone().into();
+
+        Box::into_raw(
+            Box::new(c_key)
+        )
+    } else {
+        ptr::null_mut()
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn elektraKeysetLookupByName(ks: *mut CKeySet, name: *const c_char) -> *mut CKey {
-    todo!()
+pub extern "C" fn elektraKeysetLookupByName(ks: *const CKeySet, name: *const c_char) -> *mut CKey {
+    let c_keyset = unsafe { &*ks };
+    let rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let cstr = unsafe { CStr::from_ptr(name) };
+    let key_name = match cstr.to_str() {
+        Ok(x) => x,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    if let Some(key) = rust_keyset.lookup(key_name) {
+        let c_key = key.clone().into();
+
+        Box::into_raw(
+            Box::new(c_key)
+        )
+    } else {
+        ptr::null_mut()
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetSearch(ks: *const CKeySet, k: *const CKey) -> ssize_t {
+    /*
+    let c_keyset = unsafe { &*ks };
+    let rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+    */
     todo!()
 }
