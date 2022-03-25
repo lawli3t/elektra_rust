@@ -4,7 +4,6 @@
 #include <kdb.h>
 
 int main (void) {
-    /*
     ElektraKey * key = elektraKeyNew ("user:/test/qwe/asd");
     printf("%s\n", elektraKeyName (key));
 
@@ -39,6 +38,11 @@ int main (void) {
 
     printf("--------------\n");
 
+    elektraKeyClear (key);
+    printf("%s\n", elektraKeyName (key));
+
+    printf("--------------\n");
+
     const char * value = elektraKeyValue (key);
     printf("%p\n", value);
 
@@ -53,9 +57,6 @@ int main (void) {
     printf("%s\n", value);
 
     free(value);
-    elektraKeyDel (key);
-    elektraKeyDel (key2);
-    */
 
     ElektraKeySet * ks = elektraKeysetNew (1);
     printf("%i\n", elektraKeysetSize (ks));
@@ -65,6 +66,11 @@ int main (void) {
     printf("%i\n", elektraKeysetIncRef (ks));
     printf("%i\n", elektraKeysetIncRef (ks));
     printf("%i\n", elektraKeysetSize (ks));
+
+    elektraKeysetDel (ks);
+
+    elektraKeyDel (key);
+    elektraKeyDel (key2);
 
     // KeySet * ks = ksNew (1, KS_END);
     // ksAppendKey(ks, key);

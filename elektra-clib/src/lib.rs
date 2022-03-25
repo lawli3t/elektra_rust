@@ -22,6 +22,8 @@ use crate::elektraNamespace::KEY_NS_NONE;
 
 use elektra_rust::key::{Key, KeyBuilder, KeyName, KeyNamespace, KeySet};
 
+use enumflags2::{BitFlags};
+
 #[no_mangle]
 pub unsafe extern "C" fn elektraKeyNew(keyname: *const c_char, args: ...) -> *const CKey {
     let mut va_list: VaListImpl;
@@ -72,13 +74,49 @@ pub extern "C" fn elektraKeyVNew(keyname: *const c_char, ap: VaList) -> *const C
 
 #[no_mangle]
 pub extern "C" fn elektraKeyCopy(dest: *mut CKey, source: *const CKey, flags: elektraCopyFlags) -> *mut CKey {
-    todo!()
+    if dest.is_null() || source.is_null() {
+        return ptr::null_mut();
+    }
+
+    let c_key = unsafe { &*dest };
+    let mut rust_key = match Key::try_from(c_key) {
+        Ok(x) => x,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let other_c_key = unsafe { &*source };
+    let other_rust_key = match Key::try_from(other_c_key) {
+        Ok(x) => x,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    // todo: parse Key flags properly
+    rust_key.copy_from(&other_rust_key, BitFlags::default());
+    CKey::overwrite(dest, rust_key);
+
+    dest
 }
 
 #[no_mangle]
 #[deprecated]
 pub extern "C" fn elektraKeyClear(key: *mut CKey) -> c_int {
-    todo!()
+    if key.is_null() {
+        return -1;
+    }
+
+    let c_key = unsafe { &*key };
+    let mut rust_key = match Key::try_from(c_key) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    rust_key.set_name("");
+    rust_key.set_value(&vec![]);
+    rust_key.set_meta(KeySet::default());
+
+    CKey::overwrite(key, rust_key);
+
+    1
 }
 
 #[no_mangle]
@@ -94,6 +132,10 @@ pub extern "C" fn elektraKeyDel(key: *mut CKey) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn elektraKeyMeta(key: *mut CKey) -> *mut CKeySet {
+    if key.is_null() {
+        return ptr::null_mut();
+    }
+
     unsafe {
         (*key).meta
     }
@@ -102,7 +144,28 @@ pub extern "C" fn elektraKeyMeta(key: *mut CKey) -> *mut CKeySet {
 
 #[no_mangle]
 pub extern "C" fn elektraKeySetMeta(key: *mut CKey, meta: *mut CKeySet) -> c_int {
-    todo!()
+    if key.is_null() || meta.is_null() {
+        return -1;
+    }
+
+    let c_key = unsafe { &*key };
+    let mut rust_key = match Key::try_from(c_key) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let c_keyset = unsafe { &*meta };
+    let rust_keyset = match KeySet::try_from(c_keyset) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let length = rust_keyset.len();
+
+    rust_key.set_meta(rust_keyset);
+    CKey::overwrite(key, rust_key);
+
+    length as c_int
 }
 
 #[no_mangle]
@@ -134,22 +197,18 @@ pub extern "C" fn elektraKeyIsBelow(key: *mut CKey, check: *mut CKey) -> c_int {
     }
 
     let c_key = unsafe { &*key };
-    let c_key_check = unsafe { &*check };
-
     let that_key = match Key::try_from(c_key) {
         Ok(x) => x,
         Err(_) => return -1,
     };
 
+    let c_key_check = unsafe { &*check };
     let other_key = match Key::try_from(c_key_check) {
         Ok(x) => x,
         Err(_) => return -1,
     };
 
-    return match that_key.cmp(&other_key) {
-        Ordering::Equal | Ordering::Greater => 0,
-        Ordering::Less => 1,
-    };
+    that_key.name().is_below(other_key.name()) as c_int
 }
 
 #[no_mangle]
@@ -159,32 +218,48 @@ pub extern "C" fn elektraKeyIsBelowOrSame(key: *mut CKey, check: *mut CKey) -> c
     }
 
     let c_key = unsafe { &*key };
-    let c_key_check = unsafe { &*check };
-
     let that_key = match Key::try_from(c_key) {
         Ok(x) => x,
         Err(_) => return -1,
     };
 
+    let c_key_check = unsafe { &*check };
     let other_key = match Key::try_from(c_key_check) {
         Ok(x) => x,
         Err(_) => return -1,
     };
 
-    return match that_key.cmp(&other_key) {
-        Ordering::Greater => 0,
-        Ordering::Less | Ordering::Equal => 1,
-    };
+    that_key.name().is_below_or_same(other_key.name()) as c_int
 }
 
 #[no_mangle]
 pub extern "C" fn elektraKeyIsDirectlyBelow(key: *const CKey, check: *const CKey) -> c_int {
-    todo!()
+    if key.is_null() || check.is_null() {
+        return -1;
+    }
+
+    let c_key = unsafe { &*key };
+    let that_key = match Key::try_from(c_key) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    let c_key_check = unsafe { &*check };
+    let other_key = match Key::try_from(c_key_check) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+
+    that_key.name().is_directly_below(other_key.name()) as c_int
 }
 
 /// You have to free the returned string manually, otherwise there will be memory leaks
 #[no_mangle]
 pub extern "C" fn elektraKeyName(key: *const CKey) -> *const c_char {
+    if key.is_null() {
+        return ptr::null_mut();
+    }
+
     let c_key = unsafe { &*key };
     let rust_key = match Key::try_from(c_key) {
         Ok(x) => x,
@@ -202,6 +277,10 @@ pub extern "C" fn elektraKeyName(key: *const CKey) -> *const c_char {
 
 #[no_mangle]
 pub extern "C" fn elektraKeyNameSize(key: *const CKey) -> ssize_t {
+    if key.is_null() {
+        return -1;
+    }
+
     let c_key = unsafe { &*key };
     let rust_key = match Key::try_from(c_key) {
         Ok(x) => x,
@@ -238,7 +317,7 @@ pub extern "C" fn elektraKeySetName(key: *mut CKey, newname: *const c_char) -> s
             Err(_) => return -1,
         };
 
-        rust_key.set_name(key_name);
+        rust_key.set_keyname(key_name);
         CKey::overwrite(key, rust_key);
         return elektraKeyNameSize(key);
     }
@@ -336,7 +415,7 @@ pub extern "C" fn elektraKeySetBaseName(key: *mut CKey, baseName: *const c_char)
         .set_base_name(setNameStr);
 
     CKey::overwrite(key, rust_key);
-    return cstr.to_bytes_with_nul().len() as ssize_t
+    return cstr.to_bytes_with_nul().len() as ssize_t;
 }
 
 #[no_mangle]
@@ -539,13 +618,13 @@ pub extern "C" fn elektraKeysetClear(ks: *mut CKeySet) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetDel(ks: *mut CKeySet) -> c_int {
-    let c_keyset = unsafe { &*ks };
-    let rust_keyset = match KeySet::try_from(c_keyset) {
-        Ok(x) => x,
-        Err(_) => return -1,
-    };
-    CKeySet::overwrite(ks, rust_keyset);
-    todo!()
+    if ks.is_null() {
+        return -1;
+    }
+
+    CKeySet::destroy(ks);
+
+    return 0;
 }
 
 #[no_mangle]
@@ -623,9 +702,8 @@ pub extern "C" fn elektraKeysetRemove(ks: *mut CKeySet, index: ssize_t) -> *mut 
 
 #[no_mangle]
 pub extern "C" fn elektraKeysetAddAll(ks: *mut CKeySet, other: *const CKeySet) -> ssize_t {
-    /*
     let c_keyset = unsafe { &*ks };
-    let rust_keyset = match KeySet::try_from(c_keyset) {
+    let mut rust_keyset = match KeySet::try_from(c_keyset) {
         Ok(x) => x,
         Err(_) => return -1,
     };
@@ -636,9 +714,12 @@ pub extern "C" fn elektraKeysetAddAll(ks: *mut CKeySet, other: *const CKeySet) -
         Err(_) => return -1,
     };
 
+    rust_keyset.append_all(&rust_keyset_other);
+    let length = rust_keyset.len();
+
     CKeySet::overwrite(ks, rust_keyset);
-    */
-    todo!()
+
+    length as ssize_t
 }
 
 #[no_mangle]

@@ -5,6 +5,8 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 use std::hash::{Hash, Hasher};
 
+use enumflags2::{bitflags, BitFlags};
+
 use relative_path::{RelativePath, RelativePathBuf};
 
 #[derive(Copy, Clone, PartialEq, Debug, Hash)]
@@ -48,10 +50,10 @@ impl ToString for KeyNamespace {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KeyName {
     namespace: KeyNamespace,
-    pub path: RelativePathBuf,
+    path: RelativePathBuf,
 }
 
 impl KeyName {
@@ -80,6 +82,48 @@ impl KeyName {
 
     pub fn set_namespace(&mut self, namespace: KeyNamespace) {
         self.namespace = namespace
+    }
+
+    pub fn path(&self) -> &RelativePathBuf {
+        &self.path
+    }
+
+    pub fn is_below_or_same(&self, other: &KeyName) -> bool {
+        if self.namespace != other.namespace {
+            return false;
+        }
+
+        let path = self.path().normalize();
+        let other_path = other.path().normalize();
+
+        self.is_below(&other) || path.eq(&other_path)
+    }
+
+    pub fn is_below(&self, other: &KeyName) -> bool {
+        if self.namespace != other.namespace {
+            return false;
+        }
+
+        let path = self.path().normalize();
+        let other_path = other.path().normalize();
+
+        other_path.starts_with(&path) == false
+            && path.starts_with(&other_path) == true
+    }
+
+    pub fn is_directly_below(&self, other: &KeyName) -> bool {
+        if self.namespace != other.namespace {
+            return false;
+        }
+
+        let path = self.path().normalize();
+        let other_path = other.path().normalize();
+
+        if let Some(parent) = path.parent() {
+            return other_path.eq(&parent)
+        }
+
+        return false;
     }
 }
 
@@ -115,6 +159,15 @@ impl ToString for KeyName {
     }
 }
 
+#[bitflags(default = NAME | VALUE | META)]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum KeyCopyFlags {
+    NAME = 1,
+    VALUE = 1<<1,
+    META = 1<<2,
+}
+
 #[derive(Debug)]
 pub enum KeyError {
     InvalidNameError,
@@ -124,7 +177,8 @@ pub enum KeyError {
 #[derive(Debug, Clone)]
 pub struct Key {
     name: KeyName,
-    value: Option<Vec<u8>>
+    value: Option<Vec<u8>>,
+    meta: KeySet,
 }
 
 impl Eq for Key {}
@@ -157,7 +211,8 @@ impl Key {
     pub fn new(key_name: KeyName) -> Key {
         Key {
             name: key_name,
-            value: None
+            value: None,
+            meta: KeySet::default(),
         }
     }
 
@@ -204,6 +259,36 @@ impl Key {
             None
         }
     }
+
+    pub fn meta(&self) -> &KeySet {
+        &self.meta
+    }
+
+    pub fn meta_mut(&mut self) -> &mut KeySet {
+        &mut self.meta
+    }
+
+    pub fn set_meta(&mut self, meta: KeySet) {
+        self.meta = meta;
+    }
+
+    pub fn copy_from(&mut self, other: &Key, copy_flags: BitFlags<KeyCopyFlags>) {
+        if copy_flags.contains(KeyCopyFlags::NAME) {
+            self.name = other.name.clone()
+        }
+
+        if copy_flags.contains(KeyCopyFlags::VALUE) {
+            if let Some(value) = other.value() {
+                self.value = Some(value.clone().to_vec())
+            } else {
+                self.value = None
+            }
+        }
+
+        if copy_flags.contains(KeyCopyFlags::META) {
+            self.meta = (*other.meta()).clone()
+        }
+    }
 }
 
 impl FromStr for Key {
@@ -217,7 +302,8 @@ impl FromStr for Key {
 
 pub struct KeyBuilder {
     name: KeyName,
-    value: Option<Vec<u8>>
+    value: Option<Vec<u8>>,
+    meta: Option<KeySet>,
 }
 
 impl KeyBuilder {
@@ -225,6 +311,7 @@ impl KeyBuilder {
         KeyBuilder {
             name: key_name,
             value: None,
+            meta: None,
         }
     }
 
@@ -233,11 +320,20 @@ impl KeyBuilder {
         self
     }
 
+    pub fn meta(mut self, meta: KeySet) -> KeyBuilder {
+        self.meta = Some(meta);
+        self
+    }
+
     pub fn build(self) -> Result<Key, KeyError> {
         let mut key = Key::new(self.name);
 
         if let Some(value) = self.value {
             key.set_value(&value);
+        }
+
+        if let Some(meta) = self.meta {
+            key.set_meta(meta);
         }
 
         Ok(key)
@@ -253,10 +349,12 @@ impl FromStr for KeyBuilder {
         Ok(KeyBuilder {
             name: key_name,
             value: None,
+            meta: None,
         })
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct KeySet {
     keys: IndexSet<Key>,
     refs: u16,
@@ -269,6 +367,13 @@ impl KeySet {
 
     pub fn append(&mut self, key: Key) {
         self.keys.insert(key);
+    }
+
+    pub fn append_all(&mut self, keyset: &KeySet) {
+        for key in keyset.values() {
+            // todo: improve (pop / remove?)
+            self.append((*key).clone());
+        }
     }
 
     pub fn clear(&mut self) {
@@ -373,7 +478,7 @@ mod tests {
         key.set_name("user:/asd").expect("should succeed");
         assert_eq!(key.name().to_string(), "user:/asd");
 
-        let mut key_name = KeyName::from_str("user:/test/qwe/asd").unwrap();
+        let key_name = KeyName::from_str("user:/test/qwe/asd").unwrap();
         key.set_keyname(key_name);
         assert_eq!(key.name().to_string(), "user:/test/qwe/asd");
     }
@@ -430,6 +535,38 @@ mod tests {
     }
 
     #[test]
+    fn test_key_name_below() {
+        let key_name1 = KeyName::from_str("user:/test/qwe/asd").unwrap();
+        let key_name2 = KeyName::from_str("user:/test/qwe/asd/rty").unwrap();
+        let key_name3 = KeyName::from_str("user:/test/qwe/asd").unwrap();
+        let key_name4 = KeyName::from_str("meta:/test/qwe/asd").unwrap();
+
+        assert!(key_name2.is_below(&key_name1));
+        assert!(key_name2.is_below_or_same(&key_name1));
+        assert!(key_name2.is_directly_below(&key_name1));
+        assert!(!key_name1.is_below(&key_name2));
+        assert!(!key_name1.is_below_or_same(&key_name2));
+        assert!(!key_name1.is_directly_below(&key_name2));
+
+        assert!(!key_name1.is_below(&key_name3));
+        assert!(key_name1.is_below_or_same(&key_name3));
+        assert!(!key_name1.is_directly_below(&key_name3));
+        assert!(!key_name3.is_below(&key_name1));
+        assert!(key_name3.is_below_or_same(&key_name1));
+        assert!(!key_name3.is_directly_below(&key_name1));
+
+        assert!(!key_name3.is_below(&key_name4));
+        assert!(!key_name3.is_below_or_same(&key_name4));
+        assert!(!key_name3.is_directly_below(&key_name4));
+        assert!(!key_name3.is_directly_below(&key_name4));
+
+        assert!(!key_name4.is_below(&key_name3));
+        assert!(!key_name4.is_below_or_same(&key_name3));
+        assert!(!key_name4.is_directly_below(&key_name3));
+        assert!(!key_name4.is_directly_below(&key_name3));
+    }
+
+    #[test]
     fn test_key_value() {
         let mut key = Key::new(
             KeyName::from_str("user:/test").unwrap()
@@ -455,7 +592,7 @@ mod tests {
         assert_eq!(key.name().to_string(), "user:/test/qwe/asd");
         assert_eq!(key.value_to_string().unwrap(), "asd");
 
-        let mut key_name = KeyName::from_str("user:/test/qwe/zxc").unwrap();
+        let key_name = KeyName::from_str("user:/test/qwe/zxc").unwrap();
         let key = KeyBuilder::new(key_name)
             .value("qwe".as_bytes())
             .build()
@@ -463,7 +600,6 @@ mod tests {
 
         assert_eq!(key.name().to_string(), "user:/test/qwe/zxc");
         assert_eq!(key.value_to_string().unwrap(), "qwe");
-
     }
 
     #[test]
@@ -523,7 +659,61 @@ mod tests {
         assert_eq!(0, keyset.reference_counter());
 
         assert_eq!(u16::MAX, keyset.set_reference_counter(u16::MAX));
+        assert_eq!(u16::MAX, keyset.reference_counter());
+
         assert_eq!(u16::MAX, keyset.increase_reference_counter());
         assert_eq!(u16::MAX - 1, keyset.decrease_reference_counter());
+        assert_eq!(u16::MAX - 1, keyset.reference_counter());
+    }
+
+    #[test]
+    fn test_key_copy() {
+        let mut key_name = KeyName::from_str("user:/qwe").unwrap();
+        let mut key1 = KeyBuilder::new(key_name)
+            .value("qwe".as_bytes())
+            .build()
+            .unwrap();
+
+        key_name = KeyName::from_str("user:/asd").unwrap();
+        let key2 = KeyBuilder::new(key_name)
+            .value("asd".as_bytes())
+            .build()
+            .unwrap();
+
+        key1.copy_from(&key2, KeyCopyFlags::NAME | KeyCopyFlags::NAME);
+        assert_eq!(key1.name().to_string(), "user:/asd");
+        assert_eq!(key1.name(), key2.name());
+        assert_ne!(key1.value().unwrap(), key2.value().unwrap());
+
+        key1.copy_from(&key2, KeyCopyFlags::VALUE | KeyCopyFlags::VALUE);
+        assert_eq!(key1.value().unwrap(), "asd".as_bytes());
+        assert_eq!(key1.value().unwrap(), key2.value().unwrap());
+
+        // key1.copy_from(key2, KeyCopyFlags::META);
+        // assert_eq!(*key1.meta(), *key2.meta());
+    }
+
+    #[test]
+    fn test_key_meta() {
+        let key_name = KeyName::from_str("user:/qwe").unwrap();
+        let mut key1 = KeyBuilder::new(key_name)
+            .value("qwe".as_bytes())
+            .build()
+            .unwrap();
+
+        let meta_key_name = KeyName::from_str("meta:/qwe").unwrap();
+        let meta_key = KeyBuilder::new(meta_key_name)
+            .value("asd".as_bytes())
+            .build()
+            .unwrap();
+
+        assert_eq!(key1.meta().len(), 0);
+
+        key1
+            .meta_mut()
+            .append(meta_key);
+
+        assert_eq!(key1.meta().len(), 1);
+        assert!(key1.meta().lookup("meta:/qwe").is_some())
     }
 }
